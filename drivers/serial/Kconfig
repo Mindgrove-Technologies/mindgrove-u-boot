@@ -423,6 +423,14 @@ config DEBUG_UART_SCIF
 	  will need to provide parameters to make this work. The driver will
 	  be available until the real driver-model serial is running.
 
+config DEBUG_UART_SHAKTI
+	bool "Shakti UART"
+	depends on SHAKTI_SERIAL
+	help
+	  Select this to enable a debug UART using the serial_shakti driver. You
+	  will need to provide parameters to make this work. The driver will
+	  be available until the real driver-model serial is running.
+
 config DEBUG_UART_SIFIVE
 	bool "SiFive UART"
 	depends on SIFIVE_SERIAL
@@ -1022,6 +1030,12 @@ config HTIF_CONSOLE
 	  Select this to enable host transfer interface (HTIF) based serial
 	  console. The HTIF device is quite common in RISC-V emulators and
 	  RISC-V ISS so this driver allows using U-Boot on such platforms.
+
+config SHAKTI_SERIAL
+	bool "Shakti UART support"
+	depends on DM_SERIAL
+	help
+	  This driver supports the Shakti UART. If unsure say N.
 
 config SIFIVE_SERIAL
 	bool "SiFive UART support"
