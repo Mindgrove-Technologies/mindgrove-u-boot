@@ -3,7 +3,6 @@
  * (C) Copyright 2016 Beniamino Galvani <b.galvani@gmail.com>
  */
 
-#include <common.h>
 #include <dm.h>
 #include <errno.h>
 #include <fdtdec.h>
@@ -232,6 +231,7 @@ static const struct dm_serial_ops meson_serial_ops = {
 static const struct udevice_id meson_serial_ids[] = {
 	{ .compatible = "amlogic,meson-uart" },
 	{ .compatible = "amlogic,meson-gx-uart" },
+	{ .compatible = "amlogic,meson-a1-uart" },
 	{ }
 };
 

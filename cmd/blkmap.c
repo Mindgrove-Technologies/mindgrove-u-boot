@@ -6,7 +6,6 @@
 
 #include <blk.h>
 #include <blkmap.h>
-#include <common.h>
 #include <command.h>
 #include <malloc.h>
 #include <dm/device.h>
@@ -25,7 +24,8 @@ struct map_handler {
 	map_parser_fn fn;
 };
 
-int do_blkmap_map_linear(struct map_ctx *ctx, int argc, char *const argv[])
+static int do_blkmap_map_linear(struct map_ctx *ctx, int argc,
+				char *const argv[])
 {
 	struct blk_desc *lbd;
 	int err, ldevnum;
@@ -58,7 +58,7 @@ int do_blkmap_map_linear(struct map_ctx *ctx, int argc, char *const argv[])
 	return CMD_RET_SUCCESS;
 }
 
-int do_blkmap_map_mem(struct map_ctx *ctx, int argc, char *const argv[])
+static int do_blkmap_map_mem(struct map_ctx *ctx, int argc, char *const argv[])
 {
 	phys_addr_t addr;
 	int err;
@@ -80,7 +80,7 @@ int do_blkmap_map_mem(struct map_ctx *ctx, int argc, char *const argv[])
 	return CMD_RET_SUCCESS;
 }
 
-struct map_handler map_handlers[] = {
+static struct map_handler map_handlers[] = {
 	{ .name = "linear", .fn = do_blkmap_map_linear },
 	{ .name = "mem", .fn = do_blkmap_map_mem },
 

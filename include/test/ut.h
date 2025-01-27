@@ -98,6 +98,23 @@ int ut_check_skipline(struct unit_test_state *uts);
 int ut_check_skip_to_line(struct unit_test_state *uts, const char *fmt, ...);
 
 /**
+ * ut_check_skip_to_linen() - skip output until a partial line is found
+ *
+ * This creates a string and then checks it against the following lines of
+ * console output obtained with console_record_readline() until it is found.
+ * Only the characters up to the length of the string are checked, so the line
+ * may extend further
+ *
+ * After the function returns, uts->expect_str holds the expected string and
+ * uts->actual_str holds the actual string read from the console.
+ *
+ * @uts: Test state
+ * @fmt: printf() format string to look for, followed by args
+ * Return: 0 if OK, -ENOENT if not found, other value on error
+ */
+int ut_check_skip_to_linen(struct unit_test_state *uts, const char *fmt, ...);
+
+/**
  * ut_check_console_end() - Check there is no more console output
  *
  * After the function returns, uts->actual_str holds the actual string read
@@ -359,6 +376,19 @@ int ut_check_console_dump(struct unit_test_state *uts, int total_bytes);
 	__ret;								\
 })
 
+/* Assert that a following console output line matches */
+#define ut_assert_skip_to_linen(fmt, args...) ({				\
+	int __ret = 0;							\
+									\
+	if (ut_check_skip_to_linen(uts, fmt, ##args)) {			\
+		ut_failf(uts, __FILE__, __LINE__, __func__,		\
+			 "console", "\nExpected '%s',\n     got to '%s'", \
+			 uts->expect_str, uts->actual_str);		\
+		return CMD_RET_FAILURE;					\
+	}								\
+	__ret;								\
+})
+
 /* Assert that there is no more console output */
 #define ut_assert_console_end() ({					\
 	int __ret = 0;							\
@@ -436,18 +466,37 @@ void ut_unsilence_console(struct unit_test_state *uts);
 void ut_set_skip_delays(struct unit_test_state *uts, bool skip_delays);
 
 /**
- * test_get_state() - Get the active test state
+ * ut_state_get() - Get the active test state
  *
  * Return: the currently active test state, or NULL if none
  */
-struct unit_test_state *test_get_state(void);
+struct unit_test_state *ut_get_state(void);
 
 /**
- * test_set_state() - Set the active test state
+ * ut_set_state() - Set the active test state
  *
  * @uts: Test state to use as currently active test state, or NULL if none
  */
-void test_set_state(struct unit_test_state *uts);
+void ut_set_state(struct unit_test_state *uts);
+
+/**
+ * ut_init_state() - Set up a new test state
+ *
+ * This must be called before using the test state with ut_run_tests()
+ *
+ * @uts: Test state to init
+ */
+void ut_init_state(struct unit_test_state *uts);
+
+/**
+ * ut_uninit_state() - Free memory used by test state
+ *
+ * This must be called before after the test state with ut_run_tests(). To later
+ * reuse the test state to run more tests, call test_state_init() first
+ *
+ * @uts: Test state to uninit
+ */
+void ut_uninit_state(struct unit_test_state *uts);
 
 /**
  * ut_run_tests() - Run a set of tests
@@ -455,6 +504,9 @@ void test_set_state(struct unit_test_state *uts);
  * This runs the test, handling any preparation and clean-up needed. It prints
  * the name of each test before running it.
  *
+ * @uts: Unit-test state, which must be ready for use, i.e. ut_init_state()
+ *	has been called. The caller is responsible for calling
+ *	ut_uninit_state() after this function returns
  * @category: Category of these tests. This is a string printed at the start to
  *	announce the the number of tests
  * @prefix: String prefix for the tests. Any tests that have this prefix will be
@@ -465,7 +517,7 @@ void test_set_state(struct unit_test_state *uts);
  * @select_name: Name of a single test to run (from the list provided). If NULL
  *	then all tests are run
  * @runs_per_test: Number of times to run each test (typically 1)
- * @force_run: Run tests that are marked as manual-only (UT_TESTF_MANUAL)
+ * @force_run: Run tests that are marked as manual-only (UTF_MANUAL)
  * @test_insert: String describing a test to run after n other tests run, in the
  * format n:name where n is the number of tests to run before this one and
  * name is the name of the test to run. This is used to find which test causes
@@ -473,8 +525,17 @@ void test_set_state(struct unit_test_state *uts);
  * Pass NULL to disable this
  * Return: 0 if all tests passed, -1 if any failed
  */
-int ut_run_list(const char *name, const char *prefix, struct unit_test *tests,
-		int count, const char *select_name, int runs_per_test,
-		bool force_run, const char *test_insert);
+int ut_run_list(struct unit_test_state *uts, const char *category,
+		const char *prefix, struct unit_test *tests, int count,
+		const char *select_name, int runs_per_test, bool force_run,
+		const char *test_insert);
+
+/**
+ * ut_report() - Report stats on a test run
+ *
+ * @stats: Stats to show
+ * @run_count: Number of suites that were run
+ */
+void ut_report(struct ut_stats *stats, int run_count);
 
 #endif

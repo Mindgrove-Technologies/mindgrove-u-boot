@@ -72,7 +72,7 @@ bootm command. This feature is available if U-Boot is configured with::
 
     CONFIG_BOOTM_EFI=y
 
-A sample configuration is provided as file doc/uImage.FIT/uefi.its.
+A sample configuration is provided in :doc:`../../usage/fit/uefi`.
 
 Below you find the output of an example session starting GRUB::
 
@@ -96,7 +96,7 @@ Below you find the output of an example session starting GRUB::
     ## Transferring control to EFI (at address 404000d0) ...
     Welcome to GRUB!
 
-See doc/uImage.FIT/howto.txt for an introduction to FIT images.
+See :doc:`../../usage/fit/howto` for an introduction to FIT images.
 
 Configuring UEFI secure boot
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -193,7 +193,7 @@ on the sandbox
 .. code-block:: bash
 
     cd <U-Boot source directory>
-    pytest.py test/py/tests/test_efi_secboot/test_signed.py --bd sandbox
+    pytest test/py/tests/test_efi_secboot/test_signed.py --bd sandbox
 
 UEFI binaries may be signed by Microsoft using the following certificates:
 
@@ -318,6 +318,9 @@ Run the following command
       --guid <image GUID> \
       <capsule_file_name>
 
+Capsule with firmware version
+*****************************
+
 The UEFI specification does not define the firmware versioning mechanism.
 EDK II reference implementation inserts the FMP Payload Header right before
 the payload. It coutains the fw_version and lowest supported version,
@@ -344,6 +347,60 @@ add --fw-version option in mkeficapsule tool.
 
 If the --fw-version option is not set, FMP Payload Header is not inserted
 and fw_version is set as 0.
+
+Capsule Generation through binman
+*********************************
+
+Support has also been added to generate capsules during U-Boot build
+through binman. This requires the platform's DTB to be populated with
+the capsule entry nodes for binman. The capsules then can be generated
+by specifying the capsule parameters as properties in the capsule
+entry node.
+
+Check the test/py/tests/test_efi_capsule/capsule_gen_binman.dts file
+as reference for how a typical binman node for capsule generation
+looks like. For generating capsules as part of the platform's build, a
+capsule node would then have to be included into the platform's
+devicetree.
+
+A typical binman node for generating a capsule would look like::
+
+	capsule {
+		filename = "u-boot.capsule";
+		efi-capsule {
+			image-index = <0x1>;
+			image-guid = "09d7cf52-0720-4710-91d1-08469b7fe9c8";
+
+			u-boot {
+			};
+		};
+	};
+
+In the above example, a capsule file named u-boot.capsule will be
+generated with u-boot.bin as it's input payload. The capsule
+generation parameters like image-index and image-guid are being
+specified as properties. Similarly, other properties like the private
+and public key certificate can be specified for generating signed
+capsules. Refer :ref:`etype_efi_capsule` for documentation about the
+efi-capsule binman entry type, which describes all the properties that
+can be specified.
+
+Dumping capsule headers
+***********************
+
+The mkeficapsule tool also provides a command-line option to dump the
+contents of the capsule header. This is a useful functionality when
+trying to understand the structure of a capsule and is also used in
+capsule verification. This feature is used in testing the capsule
+contents in binman's test framework.
+
+To check the contents of the capsule headers, the mkeficapsule command
+can be used.
+
+.. code-block:: console
+
+    $ mkeficapsule --dump-capsule \
+      <capsule_file_name>
 
 Performing the update
 *********************
@@ -391,6 +448,33 @@ the location of the firmware updates is not a very secure
 practice. Getting this information from the firmware itself is more
 secure, assuming the firmware has been verified by a previous stage
 boot loader.
+
+Dynamic Firmware Update GUIDs
+*****************************
+
+The image_type_id contains a GUID value which is specific to the image
+and board being updated, that is to say it should uniquely identify the
+board model (and revision if relevant) and image pair. Traditionally,
+these GUIDs are generated manually and hardcoded on a per-board basis,
+however this scheme makes it difficult to scale up to support many
+boards.
+
+To address this, v5 GUIDs can be used to generate board-specific GUIDs
+at runtime, based on the board's devicetree root compatible
+(e.g. "qcom,qrb5165-rb5").
+
+These strings are combined with the fw_image name to generate GUIDs for
+each image. Support for dynamic UUIDs can be enabled by generating a new
+namespace UUID and setting EFI_CAPSULE_NAMESPACE_GUID to it. Dynamic GUID
+generation is only enabled if the image_type_id property is unset for your
+firmware images, this is to avoid breaking existing boards with hardcoded
+GUIDs.
+
+The mkeficapsule tool can be used to determine the GUIDs for a particular
+board and image. It can be found in the tools directory.
+
+Firmware update images
+**********************
 
 The firmware images structure defines the GUID values, image index
 values and the name of the images that are to be updated through
@@ -522,20 +606,11 @@ and used by the steps highlighted below.
             ...
     }
 
-You can do step-4 manually with
-
-.. code-block:: console
-
-    $ dtc -@ -I dts -O dtb -o signature.dtbo signature.dts
-    $ fdtoverlay -i orig.dtb -o new.dtb -v signature.dtbo
-
-where signature.dts looks like::
-
-    &{/} {
-            signature {
-                    capsule-key = /incbin/("CRT.esl");
-            };
-    };
+You can perform step-4 through the Kconfig symbol
+CONFIG_EFI_CAPSULE_CRT_FILE. This symbol points to the signing key
+generated in step-2. As part of U-Boot build, the ESL certificate file will
+be generated from the signing key and automatically get embedded into the
+platform's dtb.
 
 Anti-rollback Protection
 ************************
@@ -563,10 +638,10 @@ To insert the lowest supported version into a dtb
 
 .. code-block:: console
 
-    $ dtc -@ -I dts -O dtb -o version.dtbo version.dts
+    $ dtc -@ -I dts -O dtb -o version.dtbo version.dtso
     $ fdtoverlay -i orig.dtb -o new.dtb -v version.dtbo
 
-where version.dts looks like::
+where version.dtso looks like::
 
     /dts-v1/;
     /plugin/;
@@ -583,6 +658,18 @@ where version.dts looks like::
 The properties of image-type-id and image-index must match the value
 defined in the efi_fw_image array as image_type_id and image_index.
 
+Porting Capsule Updates to new boards
+*************************************
+
+It is important, when using a reference board as a starting point for a custom
+board, that certain steps are taken to properly support Capsule Updates.
+
+Capsule GUIDs need to be unique for each firmware and board. That is, if two
+firmwares are built from the same source but result in different binaries
+because they are built for different boards, they should have different GUIDs.
+Therefore it is important when creating support for a new board, new GUIDs are
+defined in the board's header file.  *DO NOT* reuse capsule GUIDs.
+
 Executing the boot manager
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -594,12 +681,87 @@ UEFI variables. Booting according to these variables is possible via::
 As of U-Boot v2020.10 UEFI variables cannot be set at runtime. The U-Boot
 command 'efidebug' can be used to set the variables.
 
+UEFI HTTP Boot using the legacy TCP stack
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+HTTP Boot provides the capability for system deployment and configuration
+over the network. HTTP Boot can be activated by specifying::
+
+    CONFIG_EFI_HTTP_BOOT
+
+Enabling that will automatically select::
+
+    CONFIG_CMD_DNS
+    CONFIG_CMD_WGET
+    CONFIG_BLKMAP
+
+Set up the load option specifying the target URI::
+
+    efidebug boot add -u 1 netinst http://foo/bar
+
+When this load option is selected as boot selection, resolve the
+host ip address by dns, then download the file with wget.
+If the downloaded file extension is .iso or .img file, efibootmgr tries to
+mount the image and boot with the default file(e.g. EFI/BOOT/BOOTAA64.EFI).
+If the downloaded file is PE-COFF image, load the downloaded file and
+start it.
+
+The current implementation tries to resolve the IP address as a host name.
+If the uri is like "http://192.168.1.1/foobar",
+the dns process tries to resolve the host "192.168.1.1" and it will
+end up with "host not found".
+
+We need to preset the "httpserverip" environment variable to proceed the wget::
+
+    setenv httpserverip 192.168.1.1
+
+UEFI HTTP(s) Boot using lwIP
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Similar to the above U-Boot can do EFI HTTP boot using lwIP. If we combine this
+with Mbed TLS we can also download from https://
+
+HTTP(s) Boot can be activated by specifying::
+
+    CONFIG_EFI_HTTP_BOOT
+    CONFIG_NET_LWIP
+    CONFIG_WGET_HTTPS
+
+For QEMU targets there's a Kconfig that supports this by default::
+
+    make qemu_arm64_lwip_defconfig
+
+The commands and functionality are similar to the legacy stack, with the notable
+exception of not having to define an "httpserverip" if you are trying to resolve
+an IP. However, lwIP code doesn't yet support redirects::
+
+    => efidebug boot add -u 1 netinst https://cdimage.debian.org/cdimage/weekly-builds/arm64/iso-cd/debian-testing-arm64-netinst.iso
+    => dhcp
+    DHCP client bound to address 10.0.2.15 (3 ms)
+    => efidebug boot order 1
+    => bootefi bootmgr
+
+    HTTP server error 302
+    Loading Boot0001 'netinst' failed
+    EFI boot manager: Cannot load any image
+
+If the url you specified isn't a redirect::
+
+    => efidebug boot add -u 1 netinst https://download.rockylinux.org/pub/rocky/9/isos/aarch64/Rocky-9.4-aarch64-minimal.iso
+    => dhcp
+    => bootefi bootmgr
+    #######################################
+
+If the downloaded file extension is .iso or .img file, efibootmgr tries to
+mount the image and boot with the default file(e.g. EFI/BOOT/BOOTAA64.EFI).
+If the downloaded file is PE-COFF image, load the downloaded file and
+start it.
+
 Executing the built in hello world application
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 A hello world UEFI application can be built with::
 
-    CONFIG_CMD_BOOTEFI_HELLO_COMPILE=y
+    CONFIG_BOOTEFI_HELLO_COMPILE=y
 
 It can be embedded into the U-Boot binary with::
 
@@ -748,7 +910,7 @@ driver on a device the ConnectController service is called. In this context
 controller refers to the device for which the driver is installed.
 
 The relevant drivers are identified using the EFI_DRIVER_BINDING_PROTOCOL. This
-protocol has has three functions:
+protocol has three functions:
 
 * supported - determines if the driver is compatible with the device
 * start - installs the driver by opening the relevant protocol with

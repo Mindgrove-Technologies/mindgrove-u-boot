@@ -3,7 +3,6 @@
  * Copyright 2021 NXP
  */
 
-#include <common.h>
 #include <init.h>
 #include <spl.h>
 #include <asm/io.h>
@@ -20,6 +19,7 @@
 #include <asm/arch/rdc.h>
 #include <asm/arch/upower.h>
 #include <asm/mach-imx/ele_api.h>
+#include <asm/sections.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 

@@ -5,8 +5,6 @@
 
 #ifdef USE_HOSTCC
 #include <arpa/inet.h>
-#else
-#include <common.h>
 #endif
 #include <u-boot/crc.h>
 
@@ -33,4 +31,10 @@ unsigned int crc8(unsigned int crc, const unsigned char *vptr, int len)
 		crc = _crc8((crc ^ vptr[i]) << 8);
 
 	return crc;
+}
+
+void crc8_wd_buf(const unsigned char *input, unsigned int len,
+		 unsigned char output[1], unsigned int chunk_sz)
+{
+	*output = crc8(0, input, len);
 }

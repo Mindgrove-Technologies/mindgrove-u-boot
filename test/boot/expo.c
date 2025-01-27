@@ -4,7 +4,6 @@
  * Written by Simon Glass <sjg@chromium.org>
  */
 
-#include <common.h>
 #include <command.h>
 #include <dm.h>
 #include <expo.h>
@@ -92,7 +91,7 @@ static int expo_base(struct unit_test_state *uts)
 	*name = '\0';
 	ut_assertnonnull(exp);
 	ut_asserteq(0, exp->scene_id);
-	ut_asserteq(0, exp->next_id);
+	ut_asserteq(EXPOID_BASE_ID, exp->next_id);
 
 	/* Make sure the name was allocated */
 	ut_assertnonnull(exp->name);
@@ -115,7 +114,7 @@ static int expo_base(struct unit_test_state *uts)
 
 	return 0;
 }
-BOOTSTD_TEST(expo_base, UT_TESTF_DM | UT_TESTF_SCAN_FDT);
+BOOTSTD_TEST(expo_base, UTF_DM | UTF_SCAN_FDT);
 
 /* Check creating a scene */
 static int expo_scene(struct unit_test_state *uts)
@@ -131,7 +130,7 @@ static int expo_scene(struct unit_test_state *uts)
 	ut_assertok(expo_new(EXPO_NAME, NULL, &exp));
 
 	scn = NULL;
-	ut_asserteq(0, exp->next_id);
+	ut_asserteq(EXPOID_BASE_ID, exp->next_id);
 	strcpy(name, SCENE_NAME1);
 	id = scene_new(exp, name, SCENE1, &scn);
 	*name = '\0';
@@ -152,7 +151,7 @@ static int expo_scene(struct unit_test_state *uts)
 	scn = NULL;
 	id = scene_new(exp, SCENE_NAME2, 0, &scn);
 	ut_assertnonnull(scn);
-	ut_assertok(scene_title_set(scn, title_id));
+	scn->title_id = title_id;
 	ut_asserteq(STR_SCENE_TITLE + 1, id);
 	ut_asserteq(STR_SCENE_TITLE + 2, exp->next_id);
 	ut_asserteq_ptr(exp, scn->expo);
@@ -166,7 +165,26 @@ static int expo_scene(struct unit_test_state *uts)
 
 	return 0;
 }
-BOOTSTD_TEST(expo_scene, UT_TESTF_DM | UT_TESTF_SCAN_FDT);
+BOOTSTD_TEST(expo_scene, UTF_DM | UTF_SCAN_FDT);
+
+/* Check creating a scene with no ID */
+static int expo_scene_no_id(struct unit_test_state *uts)
+{
+	struct scene *scn;
+	struct expo *exp;
+	char name[100];
+	int id;
+
+	ut_assertok(expo_new(EXPO_NAME, NULL, &exp));
+	ut_asserteq(EXPOID_BASE_ID, exp->next_id);
+
+	strcpy(name, SCENE_NAME1);
+	id = scene_new(exp, SCENE_NAME1, 0, &scn);
+	ut_asserteq(EXPOID_BASE_ID, scn->id);
+
+	return 0;
+}
+BOOTSTD_TEST(expo_scene_no_id, UTF_DM | UTF_SCAN_FDT);
 
 /* Check creating a scene with objects */
 static int expo_object(struct unit_test_state *uts)
@@ -226,7 +244,7 @@ static int expo_object(struct unit_test_state *uts)
 
 	return 0;
 }
-BOOTSTD_TEST(expo_object, UT_TESTF_DM | UT_TESTF_SCAN_FDT);
+BOOTSTD_TEST(expo_object, UTF_DM | UTF_SCAN_FDT);
 
 /* Check setting object attributes and using themes */
 static int expo_object_attr(struct unit_test_state *uts)
@@ -287,7 +305,34 @@ static int expo_object_attr(struct unit_test_state *uts)
 
 	return 0;
 }
-BOOTSTD_TEST(expo_object_attr, UT_TESTF_DM | UT_TESTF_SCAN_FDT);
+BOOTSTD_TEST(expo_object_attr, UTF_DM | UTF_SCAN_FDT);
+
+/**
+ * struct test_iter_priv - private data for expo-iterator test
+ *
+ * @count: number of scene objects
+ * @menu_count: number of menus
+ * @fail_at: item ID at which to return an error
+ */
+struct test_iter_priv {
+	int count;
+	int menu_count;
+	int fail_at;
+};
+
+int h_test_iter(struct scene_obj *obj, void *vpriv)
+{
+	struct test_iter_priv *priv = vpriv;
+
+	if (priv->fail_at == obj->id)
+		return -EINVAL;
+
+	priv->count++;
+	if (obj->type == SCENEOBJT_MENU)
+		priv->menu_count++;
+
+	return 0;
+}
 
 /* Check creating a scene with a menu */
 static int expo_object_menu(struct unit_test_state *uts)
@@ -296,6 +341,7 @@ static int expo_object_menu(struct unit_test_state *uts)
 	struct scene_menitem *item;
 	int id, label_id, desc_id, key_id, pointer_id, preview_id;
 	struct scene_obj_txt *ptr, *name1, *desc1, *key1, *tit, *prev1;
+	struct test_iter_priv priv;
 	struct scene *scn;
 	struct expo *exp;
 	ulong start_mem;
@@ -382,13 +428,30 @@ static int expo_object_menu(struct unit_test_state *uts)
 	ut_asserteq(menu->obj.dim.y + 32, prev1->obj.dim.y);
 	ut_asserteq(true, prev1->obj.flags & SCENEOF_HIDE);
 
+	/* check iterating through scene items */
+	memset(&priv, '\0', sizeof(priv));
+	ut_assertok(expo_iter_scene_objs(exp, h_test_iter, &priv));
+	ut_asserteq(7, priv.count);
+	ut_asserteq(1, priv.menu_count);
+
+	/* check the iterator failing part way through iteration */
+	memset(&priv, '\0', sizeof(priv));
+	priv.fail_at = key_id;
+	ut_asserteq(-EINVAL, expo_iter_scene_objs(exp, h_test_iter, &priv));
+
+	/* 2 items (preview_id and the menuitem) are after key_id, 7 - 2 = 5 */
+	ut_asserteq(5, priv.count);
+
+	/* menu is first, so is still processed */
+	ut_asserteq(1, priv.menu_count);
+
 	expo_destroy(exp);
 
 	ut_assertok(ut_check_delta(start_mem));
 
 	return 0;
 }
-BOOTSTD_TEST(expo_object_menu, UT_TESTF_DM | UT_TESTF_SCAN_FDT);
+BOOTSTD_TEST(expo_object_menu, UTF_DM | UTF_SCAN_FDT);
 
 /* Check rendering a scene */
 static int expo_render_image(struct unit_test_state *uts)
@@ -401,7 +464,6 @@ static int expo_render_image(struct unit_test_state *uts)
 	struct expo *exp;
 	int id;
 
-	console_record_reset_enable();
 	ut_assertok(uclass_first_device_err(UCLASS_VIDEO, &dev));
 
 	ut_assertok(expo_new(EXPO_NAME, NULL, &exp));
@@ -589,7 +651,7 @@ static int expo_render_image(struct unit_test_state *uts)
 
 	return 0;
 }
-BOOTSTD_TEST(expo_render_image, UT_TESTF_DM | UT_TESTF_SCAN_FDT);
+BOOTSTD_TEST(expo_render_image, UTF_DM | UTF_SCAN_FDT | UTF_CONSOLE);
 
 /* Check building an expo from a devicetree description */
 static int expo_test_build(struct unit_test_state *uts)
@@ -609,7 +671,7 @@ static int expo_test_build(struct unit_test_state *uts)
 
 	ut_asserteq_str("name", exp->name);
 	ut_asserteq(0, exp->scene_id);
-	ut_asserteq(ID_DYNAMIC_START + 20, exp->next_id);
+	ut_asserteq(ID_DYNAMIC_START + 24, exp->next_id);
 	ut_asserteq(false, exp->popup);
 
 	/* check the scene */
@@ -655,60 +717,16 @@ static int expo_test_build(struct unit_test_state *uts)
 	ut_asserteq(0, item->desc_id);
 	ut_asserteq(0, item->preview_id);
 	ut_asserteq(0, item->flags);
+	ut_asserteq(0, item->value);
 
 	txt = scene_obj_find(scn, item->label_id, SCENEOBJT_NONE);
 	ut_asserteq_str("2 GHz", expo_get_str(exp, txt->str_id));
 
-	count = 0;
-	list_for_each_entry(item, &menu->item_head, sibling)
-		count++;
+	count = list_count_nodes(&menu->item_head);
 	ut_asserteq(3, count);
 
 	expo_destroy(exp);
 
 	return 0;
 }
-BOOTSTD_TEST(expo_test_build, UT_TESTF_DM);
-
-/* Check the cedit command */
-static int expo_cedit(struct unit_test_state *uts)
-{
-	extern struct expo *cur_exp;
-	struct scene_obj_menu *menu;
-	struct scene_obj_txt *txt;
-	struct expo *exp;
-	struct scene *scn;
-
-	if (!IS_ENABLED(CONFIG_CMD_CEDIT))
-		return -EAGAIN;
-
-	ut_assertok(run_command("cedit load hostfs - cedit.dtb", 0));
-
-	console_record_reset_enable();
-
-	/*
-	 * ^N  Move down to second menu
-	 * ^M  Open menu
-	 * ^N  Move down to second item
-	 * ^M  Select item
-	 * \e  Quit
-	 */
-	console_in_puts("\x0e\x0d\x0e\x0d\e");
-	ut_assertok(run_command("cedit run", 0));
-
-	exp = cur_exp;
-	scn = expo_lookup_scene_id(exp, exp->scene_id);
-	ut_assertnonnull(scn);
-
-	menu = scene_obj_find(scn, scn->highlight_id, SCENEOBJT_NONE);
-	ut_assertnonnull(menu);
-
-	txt = scene_obj_find(scn, menu->title_id, SCENEOBJT_NONE);
-	ut_assertnonnull(txt);
-	ut_asserteq_str("AC Power", expo_get_str(exp, txt->str_id));
-
-	ut_asserteq(ID_AC_ON, menu->cur_item_id);
-
-	return 0;
-}
-BOOTSTD_TEST(expo_cedit, UT_TESTF_DM | UT_TESTF_SCAN_FDT);
+BOOTSTD_TEST(expo_test_build, UTF_DM);

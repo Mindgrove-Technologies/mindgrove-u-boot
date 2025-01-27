@@ -94,6 +94,8 @@ LIBCRYPTO_OBJS-$(CONFIG_TOOLS_LIBCRYPTO) := \
 			generated/lib/fdt-libcrypto.o \
 			sunxi_toc0.o
 
+KWB_IMAGE_OBJS-$(CONFIG_TOOLS_LIBCRYPTO) := kwbimage.o
+
 ROCKCHIP_OBS = generated/lib/rc4.o rkcommon.o rkimage.o rksd.o rkspi.o
 
 # common objs for dumpimage and mkimage
@@ -114,7 +116,7 @@ dumpimage-mkimage-objs := aisimage.o \
 			imximage.o \
 			imx8image.o \
 			imx8mimage.o \
-			kwbimage.o \
+			$(KWB_IMAGE_OBJS-y) \
 			generated/lib/md5.o \
 			lpc32xximage.o \
 			mxsimage.o \
@@ -123,6 +125,7 @@ dumpimage-mkimage-objs := aisimage.o \
 			pblimage.o \
 			pbl_crc32.o \
 			renesas_spkgimage.o \
+			sfspl.o \
 			vybridimage.o \
 			stm32image.o \
 			$(ROCKCHIP_OBS) \
@@ -132,6 +135,7 @@ dumpimage-mkimage-objs := aisimage.o \
 			generated/lib/hash-checksum.o \
 			generated/lib/sha1.o \
 			generated/lib/sha256.o \
+			generated/lib/sha256_common.o \
 			generated/lib/sha512.o \
 			generated/common/hash.o \
 			ublimage.o \
@@ -243,12 +247,12 @@ HOSTCFLAGS_asn1_compiler.o = -idirafter $(srctree)/include
 
 HOSTCFLAGS_mkeficapsule.o += \
 	$(shell pkg-config --cflags gnutls 2> /dev/null || echo "")
-HOSTCFLAGS_mkeficapsule.o += \
-	$(shell pkg-config --cflags uuid 2> /dev/null || echo "")
 HOSTLDLIBS_mkeficapsule += \
 	$(shell pkg-config --libs gnutls 2> /dev/null || echo "-lgnutls")
-HOSTLDLIBS_mkeficapsule += \
-	$(shell pkg-config --libs uuid 2> /dev/null || echo "-luuid")
+mkeficapsule-objs := generated/lib/uuid.o \
+	generated/lib/sha1.o \
+	$(LIBFDT_OBJS) \
+	mkeficapsule.o
 hostprogs-$(CONFIG_TOOLS_MKEFICAPSULE) += mkeficapsule
 
 mkfwumdata-objs := mkfwumdata.o generated/lib/crc32.o

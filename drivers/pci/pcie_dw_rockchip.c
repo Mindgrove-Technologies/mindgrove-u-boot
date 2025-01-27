@@ -5,7 +5,6 @@
  * Copyright (c) 2021 Rockchip, Inc.
  */
 
-#include <common.h>
 #include <clk.h>
 #include <dm.h>
 #include <generic-phy.h>
@@ -18,6 +17,7 @@
 #include <asm/io.h>
 #include <asm-generic/gpio.h>
 #include <dm/device_compat.h>
+#include <linux/bitfield.h>
 #include <linux/iopoll.h>
 #include <linux/delay.h>
 #include <power/regulator.h>
@@ -43,6 +43,7 @@ struct rk_pcie {
 	struct reset_ctl_bulk	rsts;
 	struct gpio_desc	rst_gpio;
 	u32		gen;
+	u32		num_lanes;
 };
 
 /* Parameters for the waiting for iATU enabled routine */
@@ -61,8 +62,7 @@ struct rk_pcie {
 #define PCIE_CLIENT_DBG_TRANSITION_DATA	0xffff0000
 #define PCIE_CLIENT_DBF_EN		0xffff0003
 
-/* Parameters for the waiting for #perst signal */
-#define MACRO_US			1000
+#define PCIE_TYPE0_HDR_DBI2_OFFSET	0x100000
 
 static int rk_pcie_read(void __iomem *addr, int size, u32 *val)
 {
@@ -153,20 +153,65 @@ static inline void rk_pcie_writel_apb(struct rk_pcie *rk_pcie, u32 reg,
  * rk_pcie_configure() - Configure link capabilities and speed
  *
  * @rk_pcie: Pointer to the PCI controller state
- * @cap_speed: The capabilities and speed to configure
  *
  * Configure the link capabilities and speed in the PCIe root complex.
  */
-static void rk_pcie_configure(struct rk_pcie *pci, u32 cap_speed)
+static void rk_pcie_configure(struct rk_pcie *pci)
 {
+	u32 val;
+
 	dw_pcie_dbi_write_enable(&pci->dw, true);
 
+	/* Disable BAR 0 and BAR 1 */
+	writel(0, pci->dw.dbi_base + PCIE_TYPE0_HDR_DBI2_OFFSET +
+	       PCI_BASE_ADDRESS_0);
+	writel(0, pci->dw.dbi_base + PCIE_TYPE0_HDR_DBI2_OFFSET +
+	       PCI_BASE_ADDRESS_1);
+
 	clrsetbits_le32(pci->dw.dbi_base + PCIE_LINK_CAPABILITY,
-			TARGET_LINK_SPEED_MASK, cap_speed);
+			TARGET_LINK_SPEED_MASK, pci->gen);
 
 	clrsetbits_le32(pci->dw.dbi_base + PCIE_LINK_CTL_2,
-			TARGET_LINK_SPEED_MASK, cap_speed);
+			TARGET_LINK_SPEED_MASK, pci->gen);
 
+	/* Set the number of lanes */
+	val = readl(pci->dw.dbi_base + PCIE_PORT_LINK_CONTROL);
+	val &= ~PORT_LINK_FAST_LINK_MODE;
+	val |= PORT_LINK_DLL_LINK_EN;
+	val &= ~PORT_LINK_MODE_MASK;
+	switch (pci->num_lanes) {
+	case 1:
+		val |= PORT_LINK_MODE_1_LANES;
+		break;
+	case 2:
+		val |= PORT_LINK_MODE_2_LANES;
+		break;
+	case 4:
+		val |= PORT_LINK_MODE_4_LANES;
+		break;
+	default:
+		dev_err(pci->dw.dev, "num-lanes %u: invalid value\n", pci->num_lanes);
+		goto out;
+	}
+	writel(val, pci->dw.dbi_base + PCIE_PORT_LINK_CONTROL);
+
+	/* Set link width speed control register */
+	val = readl(pci->dw.dbi_base + PCIE_LINK_WIDTH_SPEED_CONTROL);
+	val &= ~PORT_LOGIC_LINK_WIDTH_MASK;
+	switch (pci->num_lanes) {
+	case 1:
+		val |= PORT_LOGIC_LINK_WIDTH_1_LANES;
+		break;
+	case 2:
+		val |= PORT_LOGIC_LINK_WIDTH_2_LANES;
+		break;
+	case 4:
+		val |= PORT_LOGIC_LINK_WIDTH_4_LANES;
+		break;
+	}
+	writel(val, pci->dw.dbi_base + PCIE_LINK_WIDTH_SPEED_CONTROL);
+
+out:
 	dw_pcie_dbi_write_enable(&pci->dw, false);
 }
 
@@ -226,11 +271,10 @@ static int is_link_up(struct rk_pcie *priv)
  * rk_pcie_link_up() - Wait for the link to come up
  *
  * @rk_pcie: Pointer to the PCI controller state
- * @cap_speed: Desired link speed
  *
  * Return: 1 (true) for active line and negetive (false) for no link (timeout)
  */
-static int rk_pcie_link_up(struct rk_pcie *priv, u32 cap_speed)
+static int rk_pcie_link_up(struct rk_pcie *priv)
 {
 	int retries;
 
@@ -240,45 +284,48 @@ static int rk_pcie_link_up(struct rk_pcie *priv, u32 cap_speed)
 	}
 
 	/* DW pre link configurations */
-	rk_pcie_configure(priv, cap_speed);
-
-	/* Rest the device */
-	if (dm_gpio_is_valid(&priv->rst_gpio)) {
-		dm_gpio_set_value(&priv->rst_gpio, 0);
-		/*
-		 * Minimal is 100ms from spec but we see
-		 * some wired devices need much more, such as 600ms.
-		 * Add a enough delay to cover all cases.
-		 */
-		udelay(MACRO_US * 1000);
-		dm_gpio_set_value(&priv->rst_gpio, 1);
-	}
+	rk_pcie_configure(priv);
 
 	rk_pcie_disable_ltssm(priv);
 	rk_pcie_link_status_clear(priv);
 	rk_pcie_enable_debug(priv);
 
+	/* Reset the device */
+	if (dm_gpio_is_valid(&priv->rst_gpio))
+		dm_gpio_set_value(&priv->rst_gpio, 0);
+
 	/* Enable LTSSM */
 	rk_pcie_enable_ltssm(priv);
 
-	for (retries = 0; retries < 5; retries++) {
-		if (is_link_up(priv)) {
-			dev_info(priv->dw.dev, "PCIe Link up, LTSSM is 0x%x\n",
-				 rk_pcie_readl_apb(priv, PCIE_CLIENT_LTSSM_STATUS));
-			rk_pcie_debug_dump(priv);
-			return 0;
-		}
+	/*
+	 * PCIe requires the refclk to be stable for 100ms prior to releasing
+	 * PERST. See table 2-4 in section 2.6.2 AC Specifications of the PCI
+	 * Express Card Electromechanical Specification, 1.1. However, we don't
+	 * know if the refclk is coming from RC's PHY or external OSC. If it's
+	 * from RC, so enabling LTSSM is the just right place to release #PERST.
+	 */
+	mdelay(100);
+	if (dm_gpio_is_valid(&priv->rst_gpio))
+		dm_gpio_set_value(&priv->rst_gpio, 1);
 
-		dev_info(priv->dw.dev, "PCIe Linking... LTSSM is 0x%x\n",
-			 rk_pcie_readl_apb(priv, PCIE_CLIENT_LTSSM_STATUS));
-		rk_pcie_debug_dump(priv);
-		udelay(MACRO_US * 1000);
+	/* Check if the link is up or not */
+	for (retries = 0; retries < 10; retries++) {
+		if (is_link_up(priv))
+			break;
+
+		mdelay(100);
 	}
 
-	dev_err(priv->dw.dev, "PCIe-%d Link Fail\n", dev_seq(priv->dw.dev));
-	/* Link maybe in Gen switch recovery but we need to wait more 1s */
-	udelay(MACRO_US * 1000);
-	return -EIO;
+	if (retries >= 10) {
+		dev_err(priv->dw.dev, "PCIe-%d Link Fail\n",
+			dev_seq(priv->dw.dev));
+		return -EIO;
+	}
+
+	dev_info(priv->dw.dev, "PCIe Link up, LTSSM is 0x%x\n",
+		 rk_pcie_readl_apb(priv, PCIE_CLIENT_LTSSM_STATUS));
+	rk_pcie_debug_dump(priv);
+	return 0;
 }
 
 static int rockchip_pcie_init_port(struct udevice *dev)
@@ -287,22 +334,23 @@ static int rockchip_pcie_init_port(struct udevice *dev)
 	u32 val;
 	struct rk_pcie *priv = dev_get_priv(dev);
 
-	/* Set power and maybe external ref clk input */
-	if (priv->vpcie3v3) {
-		ret = regulator_set_value(priv->vpcie3v3, 3300000);
-		if (ret) {
-			dev_err(priv->dw.dev, "failed to enable vpcie3v3 (ret=%d)\n",
-				ret);
-			return ret;
-		}
+	ret = reset_assert_bulk(&priv->rsts);
+	if (ret) {
+		dev_err(dev, "failed to assert resets (ret=%d)\n", ret);
+		return ret;
 	}
 
-	udelay(MACRO_US * 1000);
+	/* Set power and maybe external ref clk input */
+	ret = regulator_set_enable_if_allowed(priv->vpcie3v3, true);
+	if (ret && ret != -ENOSYS) {
+		dev_err(dev, "failed to enable vpcie3v3 (ret=%d)\n", ret);
+		return ret;
+	}
 
 	ret = generic_phy_init(&priv->phy);
 	if (ret) {
 		dev_err(dev, "failed to init phy (ret=%d)\n", ret);
-		return ret;
+		goto err_disable_regulator;
 	}
 
 	ret = generic_phy_power_on(&priv->phy);
@@ -332,7 +380,7 @@ static int rockchip_pcie_init_port(struct udevice *dev)
 	rk_pcie_writel_apb(priv, 0x0, 0xf00040);
 	pcie_dw_setup_host(&priv->dw);
 
-	ret = rk_pcie_link_up(priv, priv->gen);
+	ret = rk_pcie_link_up(priv);
 	if (ret < 0)
 		goto err_link_up;
 
@@ -345,6 +393,8 @@ err_power_off_phy:
 	generic_phy_power_off(&priv->phy);
 err_exit_phy:
 	generic_phy_exit(&priv->phy);
+err_disable_regulator:
+	regulator_set_enable_if_allowed(priv->vpcie3v3, false);
 
 	return ret;
 }
@@ -365,6 +415,13 @@ static int rockchip_pcie_parse_dt(struct udevice *dev)
 		return -EINVAL;
 
 	dev_dbg(dev, "APB address is 0x%p\n", priv->apb_base);
+
+	priv->dw.cfg_base = dev_read_addr_size_index_ptr(dev, 2,
+							 &priv->dw.cfg_size);
+	if (!priv->dw.cfg_base)
+		return -EINVAL;
+
+	dev_dbg(dev, "CFG address is 0x%p\n", priv->dw.cfg_base);
 
 	ret = gpio_request_by_name(dev, "reset-gpios", 0,
 				   &priv->rst_gpio, GPIOD_IS_OUT);
@@ -400,6 +457,8 @@ static int rockchip_pcie_parse_dt(struct udevice *dev)
 
 	priv->gen = dev_read_u32_default(dev, "max-link-speed",
 					 LINK_SPEED_GEN_3);
+
+	priv->num_lanes = dev_read_u32_default(dev, "num-lanes", 1);
 
 	return 0;
 
@@ -446,7 +505,6 @@ static int rockchip_pcie_probe(struct udevice *dev)
 		 dev_seq(dev), pcie_dw_get_link_speed(&priv->dw),
 		 pcie_dw_get_link_width(&priv->dw),
 		 hose->first_busno);
-
 
 	ret = pcie_dw_prog_outbound_atu_unroll(&priv->dw,
 					       PCIE_ATU_REGION_INDEX0,

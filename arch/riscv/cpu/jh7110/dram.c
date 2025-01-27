@@ -4,7 +4,6 @@
  * Author: Yanhong Wang <yanhong.wang@starfivetech.com>
  */
 
-#include <common.h>
 #include <fdtdec.h>
 #include <init.h>
 #include <linux/sizes.h>
@@ -21,7 +20,7 @@ int dram_init_banksize(void)
 	return fdtdec_setup_memory_banksize();
 }
 
-phys_size_t board_get_usable_ram_top(phys_size_t total_size)
+phys_addr_t board_get_usable_ram_top(phys_size_t total_size)
 {
 	/*
 	 * Ensure that we run from first 4GB so that all

@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright (C) 2017 Texas Instruments Incorporated - http://www.ti.com/
+ * Copyright (C) 2017 Texas Instruments Incorporated - https://www.ti.com/
  * Written by Jean-Jacques Hiblot  <jjhiblot@ti.com>
  */
 
 #define LOG_CATEGORY UCLASS_PHY
 
-#include <common.h>
 #include <dm.h>
 #include <dm/device_compat.h>
 #include <dm/devres.h>
 #include <generic-phy.h>
 #include <linux/list.h>
+#include <linux/printk.h>
 #include <power/regulator.h>
 
 /**
@@ -195,6 +195,7 @@ int generic_phy_get_by_index_nodev(ofnode node, int index, struct phy *phy)
 	return 0;
 
 err:
+	phy->dev = NULL;
 	return ret;
 }
 
@@ -210,6 +211,9 @@ int generic_phy_get_by_name(struct udevice *dev, const char *phy_name,
 	int index;
 
 	debug("%s(dev=%p, name=%s, phy=%p)\n", __func__, dev, phy_name, phy);
+
+	assert(phy);
+	phy->dev = NULL;
 
 	index = dev_read_stringlist_search(dev, "phy-names", phy_name);
 	if (index < 0) {
@@ -411,7 +415,7 @@ int generic_phy_get_bulk(struct udevice *dev, struct phy_bulk *bulk)
 	if (!dev_read_prop(dev, "phys", NULL)) {
 		phydev = dev->parent;
 		if (!dev_read_prop(phydev, "phys", NULL)) {
-			pr_err("%s : no phys property\n", __func__);
+			pr_debug("%s : no phys property\n", __func__);
 			return 0;
 		}
 	}
@@ -504,46 +508,46 @@ int generic_phy_power_off_bulk(struct phy_bulk *bulk)
 	return ret;
 }
 
-int generic_setup_phy(struct udevice *dev, struct phy *phy, int index)
+int generic_setup_phy(struct udevice *dev, struct phy *phy, int index,
+		      enum phy_mode mode, int submode)
 {
-	int ret = 0;
-
-	if (!phy)
-		return 0;
+	int ret;
 
 	ret = generic_phy_get_by_index(dev, index, phy);
-	if (ret) {
-		if (ret != -ENOENT)
-			return ret;
-	} else {
-		ret = generic_phy_init(phy);
-		if (ret)
-			return ret;
+	if (ret)
+		return ret == -ENOENT ? 0 : ret;
 
-		ret = generic_phy_power_on(phy);
-		if (ret)
-			ret = generic_phy_exit(phy);
-	}
+	ret = generic_phy_init(phy);
+	if (ret)
+		return ret;
 
+	ret = generic_phy_set_mode(phy, mode, submode);
+	if (ret)
+		goto phys_mode_err;
+
+	ret = generic_phy_power_on(phy);
+	if (ret)
+		goto phys_mode_err;
+
+	return 0;
+
+phys_mode_err:
+	generic_phy_exit(phy);
 	return ret;
 }
 
 int generic_shutdown_phy(struct phy *phy)
 {
-	int ret = 0;
+	int ret;
 
-	if (!phy)
+	if (!generic_phy_valid(phy))
 		return 0;
 
-	if (generic_phy_valid(phy)) {
-		ret = generic_phy_power_off(phy);
-		if (ret)
-			return ret;
+	ret = generic_phy_power_off(phy);
+	if (ret)
+		return ret;
 
-		ret = generic_phy_exit(phy);
-	}
-
-	return ret;
+	return generic_phy_exit(phy);
 }
 
 UCLASS_DRIVER(phy) = {

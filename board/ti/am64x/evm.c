@@ -7,7 +7,7 @@
  *
  */
 
-#include <common.h>
+#include <efi_loader.h>
 #include <asm/io.h>
 #include <dm/uclass.h>
 #include <k3-ddrss.h>
@@ -15,41 +15,56 @@
 #include <fdt_support.h>
 #include <asm/arch/hardware.h>
 #include <env.h>
+#include <asm/arch/k3-ddr.h>
 
 #include "../common/board_detect.h"
+#include "../common/fdt_ops.h"
 
-#define board_is_am64x_gpevm()	board_ti_k3_is("AM64-GPEVM")
+#define board_is_am64x_gpevm() (board_ti_k3_is("AM64-GPEVM") || \
+				board_ti_k3_is("AM64-EVM") || \
+				board_ti_k3_is("AM64-HSEVM"))
 
 #define board_is_am64x_skevm() (board_ti_k3_is("AM64-SKEVM") || \
 				board_ti_k3_is("AM64B-SKEVM"))
 
 DECLARE_GLOBAL_DATA_PTR;
 
+struct efi_fw_image fw_images[] = {
+	{
+		.image_type_id = AM64X_SK_TIBOOT3_IMAGE_GUID,
+		.fw_name = u"AM64X_SK_TIBOOT3",
+		.image_index = 1,
+	},
+	{
+		.image_type_id = AM64X_SK_SPL_IMAGE_GUID,
+		.fw_name = u"AM64X_SK_SPL",
+		.image_index = 2,
+	},
+	{
+		.image_type_id = AM64X_SK_UBOOT_IMAGE_GUID,
+		.fw_name = u"AM64X_SK_UBOOT",
+		.image_index = 3,
+	}
+};
+
+struct efi_capsule_update_info update_info = {
+	.dfu_string = "sf 0:0=tiboot3.bin raw 0 100000;"
+	"tispl.bin raw 100000 200000;u-boot.img raw 300000 400000",
+	.num_images = ARRAY_SIZE(fw_images),
+	.images = fw_images,
+};
+
+#if IS_ENABLED(CONFIG_SET_DFU_ALT_INFO)
+void set_dfu_alt_info(char *interface, char *devstr)
+{
+	if (IS_ENABLED(CONFIG_EFI_HAVE_CAPSULE_SUPPORT))
+		env_set("dfu_alt_info", update_info.dfu_string);
+}
+#endif
+
 int board_init(void)
 {
 	return 0;
-}
-
-int dram_init(void)
-{
-	s32 ret;
-
-	ret = fdtdec_setup_mem_size_base();
-	if (ret)
-		printf("Error setting up mem size and base. %d\n", ret);
-
-	return ret;
-}
-
-int dram_init_banksize(void)
-{
-	s32 ret;
-
-	ret = fdtdec_setup_memory_banksize();
-	if (ret)
-		printf("Error setting up memory banksize. %d\n", ret);
-
-	return ret;
 }
 
 #if defined(CONFIG_SPL_LOAD_FIT)
@@ -69,7 +84,7 @@ int board_fit_config_name_match(const char *name)
 }
 #endif
 
-#if defined(CONFIG_SPL_BUILD)
+#if defined(CONFIG_XPL_BUILD)
 #if CONFIG_IS_ENABLED(USB_STORAGE)
 static int fixup_usb_boot(const void *fdt_blob)
 {
@@ -96,52 +111,14 @@ static int fixup_usb_boot(const void *fdt_blob)
 }
 #endif
 
-#if defined(CONFIG_K3_AM64_DDRSS)
-static void fixup_ddr_driver_for_ecc(struct spl_image_info *spl_image)
-{
-	struct udevice *dev;
-	int ret;
-
-	dram_init_banksize();
-
-	ret = uclass_get_device(UCLASS_RAM, 0, &dev);
-	if (ret)
-		panic("Cannot get RAM device for ddr size fixup: %d\n", ret);
-
-	ret = k3_ddrss_ddr_fdt_fixup(dev, spl_image->fdt_addr, gd->bd);
-	if (ret)
-		printf("Error fixing up ddr node for ECC use! %d\n", ret);
-}
-#else
-static void fixup_memory_node(struct spl_image_info *spl_image)
-{
-	u64 start[CONFIG_NR_DRAM_BANKS];
-	u64 size[CONFIG_NR_DRAM_BANKS];
-	int bank;
-	int ret;
-
-	dram_init();
-	dram_init_banksize();
-
-	for (bank = 0; bank < CONFIG_NR_DRAM_BANKS; bank++) {
-		start[bank] =  gd->bd->bi_dram[bank].start;
-		size[bank] = gd->bd->bi_dram[bank].size;
-	}
-
-	/* dram_init functions use SPL fdt, and we must fixup u-boot fdt */
-	ret = fdt_fixup_memory_banks(spl_image->fdt_addr, start, size, CONFIG_NR_DRAM_BANKS);
-	if (ret)
-		printf("Error fixing up memory node! %d\n", ret);
-}
-#endif
-
 void spl_perform_fixups(struct spl_image_info *spl_image)
 {
-#if defined(CONFIG_K3_AM64_DDRSS)
-	fixup_ddr_driver_for_ecc(spl_image);
-#else
-	fixup_memory_node(spl_image);
-#endif
+	if (IS_ENABLED(CONFIG_K3_DDRSS)) {
+		if (IS_ENABLED(CONFIG_K3_INLINE_ECC))
+			fixup_ddr_driver_for_ecc(spl_image);
+	} else {
+		fixup_memory_node(spl_image);
+	}
 
 #if CONFIG_IS_ENABLED(USB_STORAGE)
 	fixup_usb_boot(spl_image->fdt_addr);
@@ -180,6 +157,12 @@ int checkboard(void)
 }
 
 #ifdef CONFIG_BOARD_LATE_INIT
+static struct ti_fdt_map ti_am64_evm_fdt_map[] = {
+	{"am64x_gpevm", "ti/k3-am642-evm.dtb"},
+	{"am64x_skevm", "ti/k3-am642-sk.dtb"},
+	{ /* Sentinel. */ }
+};
+
 static void setup_board_eeprom_env(void)
 {
 	char *name = "am64x_gpevm";
@@ -197,6 +180,7 @@ static void setup_board_eeprom_env(void)
 
 invalid_eeprom:
 	set_board_info_env_am6(name);
+	ti_set_fdt_env(name, ti_am64_evm_fdt_map);
 }
 
 static void setup_serial(void)

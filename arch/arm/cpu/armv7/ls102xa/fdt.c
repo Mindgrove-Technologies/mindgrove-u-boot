@@ -3,7 +3,7 @@
  * Copyright 2014 Freescale Semiconductor, Inc.
  */
 
-#include <common.h>
+#include <config.h>
 #include <clock_legacy.h>
 #include <net.h>
 #include <asm/global_data.h>
@@ -136,7 +136,7 @@ void ft_cpu_setup(void *blob, struct bd_info *bd)
 	 */
 	off = fdt_add_mem_rsv(blob, CONFIG_TEXT_BASE - UBOOT_HEAD_LEN,
 			      CONFIG_SYS_MONITOR_LEN +
-			      CONFIG_SYS_SPL_MALLOC_SIZE + UBOOT_HEAD_LEN);
+			      CONFIG_SPL_SYS_MALLOC_SIZE + UBOOT_HEAD_LEN);
 	if (off < 0)
 		printf("Failed to reserve memory for SD boot deep sleep: %s\n",
 		       fdt_strerror(off));

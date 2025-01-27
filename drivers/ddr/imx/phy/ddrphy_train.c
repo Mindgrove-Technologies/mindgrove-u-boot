@@ -3,7 +3,6 @@
  * Copyright 2018 NXP
  */
 
-#include <common.h>
 #include <log.h>
 #include <linux/kernel.h>
 #include <asm/arch/ddr.h>
@@ -79,7 +78,6 @@ int ddr_cfg_phy(struct dram_timing_info *dram_timing)
 
 		dwc_ddrphy_apb_wr(0xd0000, 0x1);
 
-
 		fsp_msg++;
 	}
 
@@ -92,7 +90,8 @@ int ddr_cfg_phy(struct dram_timing_info *dram_timing)
 	}
 
 	/* save the ddr PHY trained CSR in memory for low power use */
-	ddrphy_trained_csr_save(ddrphy_trained_csr, ddrphy_trained_csr_num);
+	ddrphy_trained_csr_save(dram_timing->ddrphy_trained_csr,
+				dram_timing->ddrphy_trained_csr_num);
 
 	return 0;
 }

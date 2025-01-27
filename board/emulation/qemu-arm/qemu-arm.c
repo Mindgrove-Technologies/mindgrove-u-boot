@@ -3,7 +3,7 @@
  * Copyright (c) 2017 Tuomas Tynkkynen
  */
 
-#include <common.h>
+#include <config.h>
 #include <cpu_func.h>
 #include <dm.h>
 #include <efi.h>
@@ -11,6 +11,7 @@
 #include <fdtdec.h>
 #include <init.h>
 #include <log.h>
+#include <usb.h>
 #include <virtio_types.h>
 #include <virtio.h>
 
@@ -47,7 +48,7 @@ struct efi_fw_image fw_images[] = {
 };
 
 struct efi_capsule_update_info update_info = {
-	.num_images = ARRAY_SIZE(fw_images)
+	.num_images = ARRAY_SIZE(fw_images),
 	.images = fw_images,
 };
 
@@ -114,6 +115,10 @@ int board_late_init(void)
 	 */
 	virtio_init();
 
+	/* start usb so that usb keyboard can be used as input device */
+	if (CONFIG_IS_ENABLED(USB_KEYBOARD))
+		usb_init();
+
 	return 0;
 }
 
@@ -121,6 +126,18 @@ int dram_init(void)
 {
 	if (fdtdec_setup_mem_size_base() != 0)
 		return -EINVAL;
+
+	/*
+	 * When LPAE is enabled (ARMv7),
+	 * 1:1 mapping is created using 2 MB blocks.
+	 *
+	 * In case amount of memory provided to QEMU
+	 * is not multiple of 2 MB, round down the amount
+	 * of available memory to avoid hang during MMU
+	 * initialization.
+	 */
+	if (CONFIG_IS_ENABLED(ARMV7_LPAE))
+		gd->ram_size -= (gd->ram_size % 0x200000);
 
 	return 0;
 }
@@ -132,11 +149,12 @@ int dram_init_banksize(void)
 	return 0;
 }
 
-void *board_fdt_blob_setup(int *err)
+int board_fdt_blob_setup(void **fdtp)
 {
-	*err = 0;
 	/* QEMU loads a generated DTB for us at the start of RAM. */
-	return (void *)CFG_SYS_SDRAM_BASE;
+	*fdtp = (void *)CFG_SYS_SDRAM_BASE;
+
+	return 0;
 }
 
 void enable_caches(void)

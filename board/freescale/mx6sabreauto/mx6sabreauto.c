@@ -5,7 +5,6 @@
  * Author: Fabio Estevam <fabio.estevam@freescale.com>
  */
 
-#include <common.h>
 #include <image.h>
 #include <init.h>
 #include <net.h>
@@ -15,6 +14,7 @@
 #include <asm/arch/imx-regs.h>
 #include <asm/arch/iomux.h>
 #include <asm/arch/mx6-pins.h>
+#include <asm/sections.h>
 #include <env.h>
 #include <linux/errno.h>
 #include <asm/gpio.h>
@@ -138,7 +138,6 @@ static void eim_clk_setup(void)
 	struct mxc_ccm_reg *imx_ccm = (struct mxc_ccm_reg *)CCM_BASE_ADDR;
 	int cscmr1, ccgr6;
 
-
 	/* Turn off EIM clock */
 	ccgr6 = readl(&imx_ccm->CCGR6);
 	ccgr6 &= ~(0x3 << 10);
@@ -169,7 +168,6 @@ static void setup_iomux_eimnor(void)
 	eimnor_cs_setup();
 }
 #endif
-
 
 static iomux_v3_cfg_t const usdhc3_pads[] = {
 	IOMUX_PADS(PAD_SD3_CLK__SD3_CLK		| MUX_PAD_CTRL(USDHC_PAD_CTRL)),
@@ -480,7 +478,6 @@ int power_init_board(void)
 	if (ret != 0)
 		return ret;
 
-
 	if (is_mx6dqp()) {
 		/* set SW2 staby volatage 0.975V*/
 		value = pmic_reg_read(dev, PFUZE100_SW2STBY);
@@ -548,7 +545,7 @@ int board_ehci_hcd_init(int port)
 }
 #endif
 
-#ifdef CONFIG_SPL_BUILD
+#ifdef CONFIG_XPL_BUILD
 #include <asm/arch/mx6-ddr.h>
 #include <spl.h>
 #include <linux/libfdt.h>

@@ -7,7 +7,6 @@
  *
  * Based loosely off of Linux's PHY Lib
  */
-#include <common.h>
 #include <console.h>
 #include <dm.h>
 #include <log.h>
@@ -18,6 +17,8 @@
 #include <phy.h>
 #include <errno.h>
 #include <asm/global_data.h>
+#include <asm-generic/gpio.h>
+#include <dm/device_compat.h>
 #include <dm/of_extra.h>
 #include <linux/bitops.h>
 #include <linux/delay.h>
@@ -249,7 +250,7 @@ int genphy_update_link(struct phy_device *phydev)
 			/*
 			 * Timeout reached ?
 			 */
-			if (i > (PHY_ANEG_TIMEOUT / 50)) {
+			if (i > (CONFIG_PHY_ANEG_TIMEOUT / 50)) {
 				printf(" TIMEOUT !\n");
 				phydev->link = 0;
 				return -ETIMEDOUT;
@@ -463,37 +464,6 @@ U_BOOT_PHY_DRIVER(genphy) = {
 	.shutdown	= genphy_shutdown,
 };
 
-#ifdef CONFIG_NEEDS_MANUAL_RELOC
-int phy_init(void)
-{
-	const int ll_n_ents = ll_entry_count(struct phy_driver, phy_driver);
-	struct phy_driver *drv, *ll_entry;
-
-	/* Perform manual relocation on linker list based PHY drivers */
-	ll_entry = ll_entry_start(struct phy_driver, phy_driver);
-	for (drv = ll_entry; drv != ll_entry + ll_n_ents; drv++) {
-		if (drv->probe)
-			drv->probe += gd->reloc_off;
-		if (drv->config)
-			drv->config += gd->reloc_off;
-		if (drv->startup)
-			drv->startup += gd->reloc_off;
-		if (drv->shutdown)
-			drv->shutdown += gd->reloc_off;
-		if (drv->readext)
-			drv->readext += gd->reloc_off;
-		if (drv->writeext)
-			drv->writeext += gd->reloc_off;
-		if (drv->read_mmd)
-			drv->read_mmd += gd->reloc_off;
-		if (drv->write_mmd)
-			drv->write_mmd += gd->reloc_off;
-	}
-
-	return 0;
-}
-#endif
-
 int phy_set_supported(struct phy_device *phydev, u32 max_speed)
 {
 	/* The default values for phydev->supported are provided by the PHY
@@ -597,7 +567,8 @@ struct phy_device *phy_device_create(struct mii_dev *bus, int addr,
 		return NULL;
 	}
 
-	if (addr >= 0 && addr < PHY_MAX_ADDR && phy_id != PHY_FIXED_ID)
+	if (addr >= 0 && addr < PHY_MAX_ADDR && phy_id != PHY_FIXED_ID &&
+	    phy_id != PHY_NCSI_ID)
 		bus->phymap[addr] = dev;
 
 	return dev;
@@ -673,12 +644,12 @@ static struct phy_device *search_for_existing_phy(struct mii_dev *bus,
 {
 	/* If we have one, return the existing device, with new interface */
 	while (phy_mask) {
-		int addr = ffs(phy_mask) - 1;
+		unsigned int addr = ffs(phy_mask) - 1;
 
 		if (bus->phymap[addr])
 			return bus->phymap[addr];
 
-		phy_mask &= ~(1 << addr);
+		phy_mask &= ~(1U << addr);
 	}
 	return NULL;
 }
@@ -799,6 +770,59 @@ int miiphy_reset(const char *devname, unsigned char addr)
 	return phy_reset(phydev);
 }
 
+#if CONFIG_IS_ENABLED(DM_GPIO) && CONFIG_IS_ENABLED(OF_REAL) && \
+    !IS_ENABLED(CONFIG_DM_ETH_PHY)
+int phy_gpio_reset(struct udevice *dev)
+{
+	struct ofnode_phandle_args phandle_args;
+	struct gpio_desc gpio;
+	u32 assert, deassert;
+	ofnode node;
+	int ret;
+
+	ret = dev_read_phandle_with_args(dev, "phy-handle", NULL, 0, 0,
+					 &phandle_args);
+	/* No PHY handle is OK */
+	if (ret)
+		return 0;
+
+	node = phandle_args.node;
+	if (!ofnode_valid(node))
+		return -EINVAL;
+
+	ret = gpio_request_by_name_nodev(node, "reset-gpios", 0, &gpio,
+					 GPIOD_IS_OUT | GPIOD_ACTIVE_LOW);
+	/* No PHY reset GPIO is OK */
+	if (ret)
+		return 0;
+
+	assert = ofnode_read_u32_default(node, "reset-assert-us", 20000);
+	deassert = ofnode_read_u32_default(node, "reset-deassert-us", 1000);
+	ret = dm_gpio_set_value(&gpio, 1);
+	if (ret) {
+		dev_err(dev, "Failed assert gpio, err: %d\n", ret);
+		return ret;
+	}
+
+	udelay(assert);
+
+	ret = dm_gpio_set_value(&gpio, 0);
+	if (ret) {
+		dev_err(dev, "Failed deassert gpio, err: %d\n", ret);
+		return ret;
+	}
+
+	udelay(deassert);
+
+	return 0;
+}
+#else
+int phy_gpio_reset(struct udevice *dev)
+{
+	return 0;
+}
+#endif
+
 struct phy_device *phy_find_by_mask(struct mii_dev *bus, uint phy_mask)
 {
 	/* Reset the bus */
@@ -838,7 +862,10 @@ static struct phy_device *phy_connect_gmii2rgmii(struct mii_dev *bus,
 	ofnode_for_each_subnode(node, dev_ofnode(dev)) {
 		node = ofnode_by_compatible(node, "xlnx,gmii-to-rgmii-1.0");
 		if (ofnode_valid(node)) {
-			phydev = phy_device_create(bus, 0,
+			int gmiirgmii_phyaddr;
+
+			gmiirgmii_phyaddr = ofnode_read_u32_default(node, "reg", 0);
+			phydev = phy_device_create(bus, gmiirgmii_phyaddr,
 						   PHY_GMII2RGMII_ID, false);
 			if (phydev)
 				phydev->node = node;

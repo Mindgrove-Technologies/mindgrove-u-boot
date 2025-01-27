@@ -3,7 +3,9 @@
  * Configuration settings for the Allwinner A64 (sun50i) CPU
  */
 
-#if defined(CONFIG_RESERVE_ALLWINNER_BOOT0_HEADER) && !defined(CONFIG_SPL_BUILD)
+#include <asm/arch/cpu.h>
+
+#if defined(CONFIG_RESERVE_ALLWINNER_BOOT0_HEADER) && !defined(CONFIG_XPL_BUILD)
 /* reserve space for BOOT0 header information */
 	b	reset
 	.space	1532
@@ -47,7 +49,7 @@
 	.word	CONFIG_SUNXI_RVBAR_ADDRESS	// writable RVBAR mapping addr
 	.word	SUNXI_SRAMC_BASE
 	.word	CONFIG_SUNXI_RVBAR_ALTERNATIVE	// address for die variant
-#ifdef CONFIG_SPL_BUILD
+#ifdef CONFIG_XPL_BUILD
 	.word	CONFIG_SPL_TEXT_BASE
 #else
 	.word   CONFIG_TEXT_BASE

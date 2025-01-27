@@ -3,7 +3,6 @@
  * Copyright (C) 2014-2016 Stefan Roese <sr@denx.de>
  */
 
-#include <common.h>
 #include <cpu_func.h>
 #include <dm.h>
 #include <fdtdec.h>
@@ -71,8 +70,9 @@
 #error CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR must be set to 0
 #endif
 #if !defined(CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET) || \
-    CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET != 0
-#error CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET must be set to 0
+    (CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET != 0 && \
+     CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET != 4096)
+#error CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET must be set to either 0 or 4096
 #endif
 #endif
 
@@ -123,8 +123,8 @@ u32 spl_mmc_boot_mode(struct mmc *mmc, const u32 boot_device)
 {
 	return IS_SD(mmc) ? MMCSD_MODE_RAW : MMCSD_MODE_EMMCBOOT;
 }
-unsigned long spl_mmc_get_uboot_raw_sector(struct mmc *mmc,
-					   unsigned long raw_sect)
+unsigned long arch_spl_mmc_get_uboot_raw_sector(struct mmc *mmc,
+						unsigned long raw_sect)
 {
 	return IS_SD(mmc) ? 1 : 0;
 }
@@ -313,6 +313,33 @@ int board_return_to_bootrom(struct spl_image_info *spl_image,
 	hang();
 }
 
+#if !defined(CONFIG_ARMADA_375)
+__weak bool board_use_old_ddr3_training(void)
+{
+	return false;
+}
+
+static void ddr3_init_or_fail(void)
+{
+	int ret;
+
+	if (IS_ENABLED(CONFIG_ARMADA_38X_SUPPORT_OLD_DDR3_TRAINING) &&
+	    board_use_old_ddr3_training())
+		ret = old_ddr3_init();
+	else
+		ret = ddr3_init();
+
+	if (ret) {
+		printf("ddr3 init failed: %d\n", ret);
+		if (IS_ENABLED(CONFIG_DDR_RESET_ON_TRAINING_FAILURE) &&
+		    get_boot_device() != BOOT_DEVICE_UART)
+			reset_cpu();
+		else
+			hang();
+	}
+}
+#endif
+
 void board_init_f(ulong dummy)
 {
 	int ret;
@@ -347,15 +374,7 @@ void board_init_f(ulong dummy)
 	serdes_phy_config();
 
 	/* Setup DDR */
-	ret = ddr3_init();
-	if (ret) {
-		printf("ddr3_init() failed: %d\n", ret);
-		if (IS_ENABLED(CONFIG_DDR_RESET_ON_TRAINING_FAILURE) &&
-		    get_boot_device() != BOOT_DEVICE_UART)
-			reset_cpu();
-		else
-			hang();
-	}
+	ddr3_init_or_fail();
 #endif
 
 	/* Initialize Auto Voltage Scaling */

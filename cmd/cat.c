@@ -4,7 +4,6 @@
  * Roger Knecht <rknecht@pm.de>
  */
 
-#include <common.h>
 #include <command.h>
 #include <fs.h>
 #include <malloc.h>
@@ -60,11 +59,9 @@ static int do_cat(struct cmd_tbl *cmdtp, int flag, int argc,
 	return 0;
 }
 
-#ifdef CONFIG_SYS_LONGHELP
-static char cat_help_text[] =
+U_BOOT_LONGHELP(cat,
 	"<interface> <dev[:part]> <file>\n"
-	"  - Print file from 'dev' on 'interface' to standard output\n";
-#endif
+	"  - Print file from 'dev' on 'interface' to standard output\n");
 
 U_BOOT_CMD(cat, 4, 1, do_cat,
 	   "Print file to standard output",

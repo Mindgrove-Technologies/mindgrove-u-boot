@@ -4,6 +4,7 @@ Use U-Boot
 .. toctree::
    :maxdepth: 1
 
+   spl_boot
    blkmap
    dfu
    environment
@@ -13,6 +14,8 @@ Use U-Boot
    partitions
    cmdline
    semihosting
+   measured_boot
+   upl
 
 Shell commands
 --------------
@@ -22,6 +25,7 @@ Shell commands
 
    cmd/acpi
    cmd/addrmap
+   cmd/armffa
    cmd/askenv
    cmd/base
    cmd/bdinfo
@@ -30,21 +34,27 @@ Shell commands
    cmd/bootd
    cmd/bootdev
    cmd/bootefi
+   cmd/bootelf
    cmd/bootflow
    cmd/booti
    cmd/bootm
    cmd/bootmenu
    cmd/bootmeth
-   cmd/button
+   cmd/bootstd
    cmd/bootz
+   cmd/button
    cmd/cat
+   cmd/cbcmos
    cmd/cbsysinfo
    cmd/cedit
+   cmd/cli
    cmd/cls
    cmd/cmp
    cmd/coninfo
    cmd/conitrace
    cmd/cp
+   cmd/cpu
+   cmd/cpuid
    cmd/cyclic
    cmd/dm
    cmd/ebtupdate
@@ -54,8 +64,8 @@ Shell commands
    cmd/env
    cmd/event
    cmd/exception
-   cmd/extension
    cmd/exit
+   cmd/extension
    cmd/false
    cmd/fatinfo
    cmd/fatload
@@ -64,7 +74,11 @@ Shell commands
    cmd/for
    cmd/fwu_mdata
    cmd/gpio
+   cmd/gpt
+   cmd/history
    cmd/host
+   cmd/if
+   cmd/itest
    cmd/imxtract
    cmd/load
    cmd/loadb
@@ -72,36 +86,45 @@ Shell commands
    cmd/loads
    cmd/loadx
    cmd/loady
+   cmd/meminfo
    cmd/mbr
    cmd/md
    cmd/mmc
+   cmd/msr
    cmd/mtest
    cmd/mtrr
+   cmd/optee
    cmd/panic
    cmd/part
    cmd/pause
    cmd/pinmux
    cmd/printenv
    cmd/pstore
+   cmd/pwm
    cmd/qfw
    cmd/read
    cmd/reset
    cmd/rng
    cmd/saves
+   cmd/sb
    cmd/sbi
-   cmd/sf
+   cmd/scmi
    cmd/scp03
    cmd/seama
    cmd/setexpr
+   cmd/sf
    cmd/size
    cmd/sleep
+   cmd/sm
+   cmd/smbios
    cmd/sound
    cmd/source
-   cmd/sm
+   cmd/tcpm
    cmd/temperature
    cmd/tftpput
    cmd/trace
    cmd/true
+   cmd/upl
    cmd/ums
    cmd/unbind
    cmd/ut

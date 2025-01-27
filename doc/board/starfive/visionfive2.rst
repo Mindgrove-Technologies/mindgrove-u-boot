@@ -4,7 +4,8 @@ StarFive VisionFive2
 ====================
 
 JH7110 RISC-V SoC
----------------------
+-----------------
+
 The JH7110 is 4+1 64-bit RISC-V SoC from StarFive.
 
 The StarFive VisionFive2 development platform is based on JH7110 and capable
@@ -20,6 +21,8 @@ The support for following drivers are already enabled:
 3. StarFive JH7110 reset Driver.
 4. Cadence QSPI controller Driver.
 5. MMC SPI Driver for MMC/SD support.
+6. PLDA PCIE controller driver.
+7. On-board VL805 PCIE-USB controller driver.
 
 Booting from MMC using U-Boot SPL
 ---------------------------------
@@ -65,18 +68,26 @@ Now build the U-Boot SPL and U-Boot proper
 	make starfive_visionfive2_defconfig
 	make OPENSBI=$(opensbi_dir)/opensbi/build/platform/generic/firmware/fw_dynamic.bin
 
-This will generate spl/u-boot-spl.bin and FIT image (u-boot.itb)
+This will generate the U-Boot SPL image (spl/u-boot-spl.bin.normal.out) as well
+as the FIT image (u-boot.itb) with OpenSBI and U-Boot.
 
-u-boot-spl.bin cannot be used directly on StarFive VisionFive2,we need
-to convert the u-boot-spl.bin to u-boot-spl.bin.normal.out with
-the below command:
+Device-tree selection
+~~~~~~~~~~~~~~~~~~~~~
 
-	./spl_tool -c -f $(Uboot_PATH)/spl/u-boot-spl.bin
+Depending on the board version U-Boot set variable $fdtfile to either
+starfive/jh7110-starfive-visionfive-2-v1.2a.dtb or
+starfive/jh7110-starfive-visionfive-2-v1.3b.dtb.
 
-More detailed description of spl_tool,please refer spl_tool documenation.
-(Note: spl_tool git repo is at https://github.com/starfive-tech/Tools/tree/master/spl_tool)
+To overrule this selection the variable can be set manually and saved in the
+environment
 
-This will generate u-boot-spl.bin.normal.out file.
+::
+
+    setenv fdtfile my_device-tree.dtb
+    env save
+
+or the configuration variable CONFIG_DEFAULT_FDT_FILE can be used to provide
+a default value.
 
 Flashing
 ~~~~~~~~
@@ -140,14 +151,14 @@ Sample boot log from StarFive VisionFive2 board
 	Trying to boot from MMC2
 
 	OpenSBI v1.2-80-g4b28afc
-	____                    _____ ____ _____
-	/ __ \                  / ____|  _ \_   _|
+	  ____                    _____ ____ _____
+	 / __ \                  / ____|  _ \_   _|
 	| |  | |_ __   ___ _ __ | (___ | |_) || |
 	| |  | | '_ \ / _ \ '_ \ \___ \|  _ < | |
 	| |__| | |_) |  __/ | | |____) | |_) || |_
-	\____/| .__/ \___|_| |_|_____/|___/_____|
-			| |
-			|_|
+	 \____/| .__/ \___|_| |_|_____/|____/_____|
+	       | |
+	       |_|
 
 	Platform Name             : StarFive VisionFive 2 v1.3B
 	Platform Features         : medeleg

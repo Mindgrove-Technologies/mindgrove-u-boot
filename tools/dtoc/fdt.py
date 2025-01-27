@@ -249,6 +249,7 @@ class Prop:
         """
         if self.dirty:
             node = self._node
+            tout.debug(f'sync {node.path}: {self.name}')
             fdt_obj = node._fdt._fdt_obj
             node_name = fdt_obj.get_name(node._offset)
             if node_name and node_name != node.name:
@@ -272,6 +273,7 @@ class Prop:
         the FDT is synced
         """
         self._offset = None
+        self.dirty = True
 
 class Node:
     """A device tree node
@@ -335,6 +337,11 @@ class Node:
         self.props = self._fdt.GetProps(self)
         phandle = fdt_obj.get_phandle(self.Offset())
         if phandle:
+            dup = self._fdt.phandle_to_node.get(phandle)
+            if dup:
+                raise ValueError(
+                    f'Duplicate phandle {phandle} in nodes {dup.path} and {self.path}')
+
             self._fdt.phandle_to_node[phandle] = self
 
         offset = fdt_obj.first_subnode(self.Offset(), QUIET_NOTFOUND)
@@ -705,30 +712,38 @@ class Node:
             prop.Sync(auto_resize)
         return added
 
-    def merge_props(self, src):
+    def merge_props(self, src, copy_phandles):
         """Copy missing properties (except 'phandle') from another node
 
         Args:
             src (Node): Node containing properties to copy
+            copy_phandles (bool): True to copy phandle properties in nodes
 
         Adds properties which are present in src but not in this node. Any
         'phandle' property is not copied since this might result in two nodes
         with the same phandle, thus making phandle references ambiguous.
         """
+        tout.debug(f'copy to {self.path}: {src.path}')
         for name, src_prop in src.props.items():
-            if name != 'phandle' and name not in self.props:
-                self.props[name] = Prop(self, None, name, src_prop.bytes)
+            done = False
+            if name not in self.props:
+                if copy_phandles or name != 'phandle':
+                    self.props[name] = Prop(self, None, name, src_prop.bytes)
+                    done = True
+            tout.debug(f"  {name}{'' if done else '  - ignored'}")
 
-    def copy_node(self, src):
+    def copy_node(self, src, copy_phandles=False):
         """Copy a node and all its subnodes into this node
 
         Args:
             src (Node): Node to copy
+            copy_phandles (bool): True to copy phandle properties in nodes
 
         Returns:
             Node: Resulting destination node
 
-        This works recursively.
+        This works recursively, with copy_phandles being set to True for the
+        recursive calls
 
         The new node is put before all other nodes. If the node already
         exists, just its subnodes and properties are copied, placing them before
@@ -740,12 +755,12 @@ class Node:
             dst.move_to_first()
         else:
             dst = self.insert_subnode(src.name)
-        dst.merge_props(src)
+        dst.merge_props(src, copy_phandles)
 
         # Process in reverse order so that they appear correctly in the result,
         # since copy_node() puts the node first in the list
         for node in reversed(src.subnodes):
-            dst.copy_node(node)
+            dst.copy_node(node, True)
         return dst
 
     def copy_subnodes_from_phandles(self, phandle_list):
@@ -767,8 +782,8 @@ class Node:
             for node in parent.subnodes.__reversed__():
                 dst = self.copy_node(node)
 
-            tout.debug(f'merge props from {parent.path} to {dst.path}')
-            self.merge_props(parent)
+            tout.debug(f'merge props from {parent.path} to {self.path}')
+            self.merge_props(parent, False)
 
 
 class Fdt:
@@ -829,6 +844,7 @@ class Fdt:
 
         TODO(sjg@chromium.org): Implement the 'root' parameter
         """
+        self.phandle_to_node = {}
         self._cached_offsets = True
         self._root = self.Node(self, None, 0, '/', '/')
         self._root.Scan()

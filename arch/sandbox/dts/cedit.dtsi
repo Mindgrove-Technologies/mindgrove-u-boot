@@ -39,6 +39,9 @@
 				/* IDs for the menu items */
 				item-id = <ID_CPU_SPEED_1 ID_CPU_SPEED_2
 					ID_CPU_SPEED_3>;
+
+				/* values for the menu items */
+				item-value = <0 3 6>;
 			};
 
 			power-loss {
@@ -50,6 +53,14 @@
 					"Memory";
 
 				item-id = <ID_AC_OFF ID_AC_ON ID_AC_MEMORY>;
+			};
+
+			machine-name {
+				id = <ID_MACHINE_NAME>;
+				type = "textline";
+				max-chars = <20>;
+				title = "Machine name";
+				edit-id = <ID_MACHINE_NAME_EDIT>;
 			};
 		};
 	};

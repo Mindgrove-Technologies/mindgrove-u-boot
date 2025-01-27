@@ -3,7 +3,6 @@
  * (C) 2018 Theobroma Systems Design und Consulting GmbH
  */
 
-#include <common.h>
 #include <bitfield.h>
 #include <errno.h>
 #include <dm.h>
@@ -11,6 +10,7 @@
 #include <log.h>
 #include <asm/gpio.h>
 #include <linux/bitops.h>
+#include <linux/printk.h>
 #include <power/fan53555.h>
 #include <power/pmic.h>
 #include <power/regulator.h>

@@ -5,7 +5,8 @@
  *  Copyright (c) 2017 Heinrich Schuchardt
  */
 
-#include <common.h>
+#define LOG_CATEGORY LOGC_EFI
+
 #include <efi_loader.h>
 
 /* Conversion factor from seconds to multiples of 100ns */

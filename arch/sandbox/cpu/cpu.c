@@ -5,7 +5,6 @@
 
 #define LOG_CATEGORY	LOGC_SANDBOX
 
-#include <common.h>
 #include <bootstage.h>
 #include <cpu_func.h>
 #include <errno.h>
@@ -110,8 +109,9 @@ void *phys_to_virt(phys_addr_t paddr)
 	state = state_get_current();
 	list_for_each_entry(mentry, &state->mapmem_head, sibling_node) {
 		if (mentry->tag == paddr) {
-			debug("%s: Used map from %lx to %p\n", __func__,
-			      (ulong)paddr, mentry->ptr);
+			log_debug("Used map from %lx to %p\n", (ulong)paddr,
+				  mentry->ptr);
+			mentry->refcnt++;
 			return mentry->ptr;
 		}
 	}
@@ -131,11 +131,12 @@ struct sandbox_mapmem_entry *find_tag(const void *ptr)
 
 	list_for_each_entry(mentry, &state->mapmem_head, sibling_node) {
 		if (mentry->ptr == ptr) {
-			debug("%s: Used map from %p to %lx\n", __func__, ptr,
-			      mentry->tag);
+			log_debug("Used map from %p to %lx\n", ptr,
+				  mentry->tag);
 			return mentry;
 		}
 	}
+
 	return NULL;
 }
 
@@ -157,14 +158,14 @@ phys_addr_t virt_to_phys(void *ptr)
 		       __func__, ptr, (ulong)gd->ram_size);
 		os_abort();
 	}
-	debug("%s: Used map from %p to %lx\n", __func__, ptr, mentry->tag);
+	log_debug("Used map from %p to %lx\n", ptr, mentry->tag);
 
 	return mentry->tag;
 }
 
 void *map_physmem(phys_addr_t paddr, unsigned long len, unsigned long flags)
 {
-#if defined(CONFIG_PCI) && !defined(CONFIG_SPL_BUILD)
+#if defined(CONFIG_PCI) && !defined(CONFIG_XPL_BUILD)
 	unsigned long plen = len;
 	void *ptr;
 
@@ -175,6 +176,7 @@ void *map_physmem(phys_addr_t paddr, unsigned long len, unsigned long flags)
 			       __func__, (uint)paddr, len, plen);
 		}
 		map_len = len;
+		log_debug("pci map %lx -> %p\n", (ulong)paddr, ptr);
 		return ptr;
 	}
 #endif
@@ -184,12 +186,30 @@ void *map_physmem(phys_addr_t paddr, unsigned long len, unsigned long flags)
 
 void unmap_physmem(const void *ptr, unsigned long flags)
 {
+	struct sandbox_mapmem_entry *mentry;
+
 #ifdef CONFIG_PCI
 	if (map_dev) {
 		pci_unmap_physmem(ptr, map_len, map_dev);
 		map_dev = NULL;
 	}
 #endif
+
+	/* If it is in emulated RAM, we didn't create a tag, so nothing to do */
+	if (is_in_sandbox_mem(ptr))
+		return;
+
+	mentry = find_tag(ptr);
+	if (mentry) {
+		if (!--mentry->refcnt) {
+			list_del(&mentry->sibling_node);
+			log_debug("Removed map from %p to %lx\n", ptr,
+				  (ulong)mentry->tag);
+			free(mentry);
+		}
+	} else {
+		log_warning("Address not mapped: %p\n", ptr);
+	}
 }
 
 phys_addr_t map_to_sysmem(const void *ptr)
@@ -218,16 +238,32 @@ phys_addr_t map_to_sysmem(const void *ptr)
 		}
 		mentry->tag = state->next_tag++;
 		mentry->ptr = (void *)ptr;
+		mentry->refcnt = 0;
 		list_add_tail(&mentry->sibling_node, &state->mapmem_head);
-		debug("%s: Added map from %p to %lx\n", __func__, ptr,
-		      (ulong)mentry->tag);
+		log_debug("Added map from %p to %lx\n", ptr,
+			  (ulong)mentry->tag);
 	}
+
+	mentry->refcnt++;
 
 	/*
 	 * Return the tag as the address to use. A later call to map_sysmem()
 	 * will return ptr
 	 */
 	return mentry->tag;
+}
+
+void sandbox_map_list(void)
+{
+	struct sandbox_mapmem_entry *mentry;
+	struct sandbox_state *state = state_get_current();
+
+	printf("Sandbox memory-mapping\n");
+	printf("%8s  %16s  %6s\n", "Addr", "Mapping", "Refcnt");
+	list_for_each_entry(mentry, &state->mapmem_head, sibling_node) {
+		printf("%8lx  %p  %6d\n", mentry->tag, mentry->ptr,
+		       mentry->refcnt);
+	}
 }
 
 unsigned long sandbox_read(const void *addr, enum sandboxio_size_t size)
@@ -286,6 +322,14 @@ void sandbox_set_enable_pci_map(int enable)
 	enable_pci_map = enable;
 }
 
+void dcache_enable(void)
+{
+}
+
+void dcache_disable(void)
+{
+}
+
 int dcache_status(void)
 {
 	return 1;
@@ -324,7 +368,7 @@ static int setup_auto_tree(void *blob)
 	return 0;
 }
 
-void *board_fdt_blob_setup(int *ret)
+int board_fdt_blob_setup(void **fdtp)
 {
 	struct sandbox_state *state = state_get_current();
 	const char *fname = state->fdt_fname;
@@ -333,42 +377,42 @@ void *board_fdt_blob_setup(int *ret)
 	int err;
 	int fd;
 
+	if (gd->fdt_blob)
+		return -EEXIST;
 	blob = map_sysmem(CONFIG_SYS_FDT_LOAD_ADDR, 0);
-	*ret = 0;
 	if (!state->fdt_fname) {
 		err = setup_auto_tree(blob);
-		if (!err)
-			goto done;
-		os_printf("Unable to create empty FDT: %s\n", fdt_strerror(err));
-		*ret = -EINVAL;
-		goto fail;
+		if (err) {
+			os_printf("Unable to create empty FDT: %s\n",
+				  fdt_strerror(err));
+			return -EINVAL;
+		}
+		*fdtp = blob;
+
+		return 0;
 	}
 
 	err = os_get_filesize(fname, &size);
 	if (err < 0) {
 		os_printf("Failed to find FDT file '%s'\n", fname);
-		*ret = err;
-		goto fail;
+		return err;
 	}
 	fd = os_open(fname, OS_O_RDONLY);
 	if (fd < 0) {
 		os_printf("Failed to open FDT file '%s'\n", fname);
-		*ret = -EACCES;
-		goto fail;
+		return -EACCES;
 	}
 
 	if (os_read(fd, blob, size) != size) {
 		os_close(fd);
 		os_printf("Failed to read FDT file '%s'\n", fname);
-		*ret =  -EIO;
-		goto fail;
+		return -EIO;
 	}
 	os_close(fd);
 
-done:
-	return blob;
-fail:
-	return NULL;
+	*fdtp = blob;
+
+	return 0;
 }
 
 ulong timer_get_boot_us(void)

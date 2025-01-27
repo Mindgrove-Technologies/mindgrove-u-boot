@@ -25,7 +25,6 @@
  */
 
 #include <clk.h>
-#include <common.h>
 #include <dm.h>
 #include <malloc.h>
 #include <memalign.h>
@@ -36,6 +35,7 @@
 #include <linux/bitops.h>
 #include <linux/delay.h>
 #include <linux/err.h>
+#include <linux/printk.h>
 
 #include <linux/kernel.h>
 #include <linux/mtd/mtd.h>

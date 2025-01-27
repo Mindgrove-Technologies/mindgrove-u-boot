@@ -1,5 +1,8 @@
 .. SPDX-License-Identifier: GPL-2.0+
 
+.. index::
+   single: qfw (command)
+
 qfw command
 ===========
 
@@ -15,7 +18,7 @@ Synopsis
 Description
 -----------
 
-The *qfw* command is used to retrieve information form the QEMU firmware.
+The *qfw* command is used to retrieve information from the QEMU firmware.
 
 The *qfw list* sub-command displays the QEMU firmware files.
 

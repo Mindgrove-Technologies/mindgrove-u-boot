@@ -7,7 +7,6 @@
  * Based on sam9x60.c on Linux.
  */
 
-#include <common.h>
 #include <clk-uclass.h>
 #include <dm.h>
 #include <dt-bindings/clk/at91.h>
@@ -429,8 +428,8 @@ static int sam9x60_clk_probe(struct udevice *dev)
 	if (!base)
 		return -EINVAL;
 
-	memset(muxallocs,    0, ARRAY_SIZE(muxallocs));
-	memset(clkmuxallocs, 0, ARRAY_SIZE(clkmuxallocs));
+	memset(muxallocs,    0, sizeof(muxallocs));
+	memset(clkmuxallocs, 0, sizeof(clkmuxallocs));
 
 	ret = clk_get_by_index(dev, 0, &clk);
 	if (ret)

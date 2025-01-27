@@ -9,8 +9,10 @@
 
 #ifndef __ASSEMBLY__
 
+#include <linux/types.h>
 #include <asm/processor.h>
 #include <asm/mrccache.h>
+#include <asm/u-boot.h>
 
 enum pei_boot_mode_t {
 	PEI_BOOT_NONE = 0,
@@ -127,6 +129,7 @@ struct arch_global_data {
 	ulong table_end;		/* End address of x86 tables */
 	ulong table_start_high;		/* Start address of high x86 tables */
 	ulong table_end_high;		/* End address of high x86 tables */
+	ulong smbios_start;		/* Start address of SMBIOS table */
 };
 
 #endif

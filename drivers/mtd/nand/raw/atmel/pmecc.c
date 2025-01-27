@@ -816,9 +816,6 @@ int atmel_pmecc_wait_rdy(struct atmel_pmecc_user *user)
 }
 EXPORT_SYMBOL_GPL(atmel_pmecc_wait_rdy);
 
-#define ATMEL_BASE_PMECC	0xffffe000
-#define ATMEL_BASE_PMERRLOC	0xffffe600
-
 static struct atmel_pmecc *
 atmel_pmecc_create(struct udevice *dev,
 		   const struct atmel_pmecc_caps *caps,
@@ -916,6 +913,7 @@ struct atmel_pmecc *devm_atmel_pmecc_get(struct udevice *userdev)
 	ret = ofnode_parse_phandle_with_args(userdev->node_,
 					     "ecc-engine",
 					     NULL, 0, 0, &args);
+	/* Probe pmecc driver */
 	ret = uclass_get_device_by_ofnode(UCLASS_MTD, args.node, &pdev);
 	if (ret)
 		return NULL;

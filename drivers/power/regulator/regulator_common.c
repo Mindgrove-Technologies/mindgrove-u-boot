@@ -4,11 +4,12 @@
  * Sven Schwermer <sven.svenschwermer@disruptive-technologies.com>
  */
 
-#include <common.h>
 #include <dm.h>
 #include <log.h>
+#include <asm/gpio.h>
 #include <linux/delay.h>
 #include <power/regulator.h>
+#include "regulator_common.h"
 
 #include "regulator_common.h"
 

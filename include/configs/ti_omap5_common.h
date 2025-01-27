@@ -10,7 +10,7 @@
  * TI OMAP5 AND DRA7XX common configuration settings
  *
  * For more details, please see the technical documents listed at
- * http://www.ti.com/product/omap5432
+ * https://www.ti.com/product/omap5432
  */
 
 #ifndef __CONFIG_TI_OMAP5_COMMON_H
@@ -39,8 +39,8 @@
 #define DFUARGS
 #endif
 
-#include <environment/ti/mmc.h>
-#include <environment/ti/nand.h>
+#include <env/ti/mmc.h>
+#include <env/ti/nand.h>
 
 #ifndef CONSOLEDEV
 #define CONSOLEDEV "ttyS2"
@@ -93,13 +93,13 @@
 
 #define CONTROL_PARTITION "misc"
 
-#if defined(CONFIG_CMD_AB_SELECT)
+#if defined(CONFIG_CMD_BCB) && defined(CONFIG_ANDROID_AB)
 #define AB_SELECT_SLOT \
 	"if part number mmc 1 " CONTROL_PARTITION " control_part_number; " \
 	"then " \
 		"echo " CONTROL_PARTITION \
 			" partition number:${control_part_number};" \
-		"ab_select slot_name mmc ${mmcdev}:${control_part_number};" \
+		"bcb ab_select slot_name mmc ${mmcdev}:${control_part_number};" \
 	"else " \
 		"echo " CONTROL_PARTITION " partition not found;" \
 		"exit;" \

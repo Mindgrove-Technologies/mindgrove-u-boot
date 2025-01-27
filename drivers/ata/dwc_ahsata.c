@@ -4,9 +4,9 @@
  * Terry Lv <r65388@freescale.com>
  */
 
-#include <common.h>
 #include <ahci.h>
 #include <blk.h>
+#include <bootdev.h>
 #include <cpu_func.h>
 #include <dm.h>
 #include <dwc_ahsata.h>
@@ -880,7 +880,8 @@ int dwc_ahsata_scan(struct udevice *dev)
 	device_find_first_child(dev, &blk);
 	if (!blk) {
 		ret = blk_create_devicef(dev, "dwc_ahsata_blk", "blk",
-					 UCLASS_AHCI, -1, 512, 0, &blk);
+					 UCLASS_AHCI, -1, DEFAULT_BLKSZ,
+					 0, &blk);
 		if (ret) {
 			debug("Can't create device\n");
 			return ret;
@@ -897,7 +898,11 @@ int dwc_ahsata_scan(struct udevice *dev)
 	ret = blk_probe_or_unbind(dev);
 	if (ret < 0)
 		/* TODO: undo create */
-		return ret;
+		return log_msg_ret("pro", ret);
+
+	ret = bootdev_setup_for_sibling_blk(blk, "sata_bootdev");
+	if (ret)
+		return log_msg_ret("bd", ret);
 
 	return 0;
 }

@@ -4,14 +4,18 @@
  * Michal Simek <michal.simek@amd.com>
  */
 
-#include <common.h>
+#include <config.h>
 #include <cpu_func.h>
 #include <log.h>
+#include <vsprintf.h>
 #include <zynqmp_firmware.h>
 #include <asm/arch/hardware.h>
 #include <asm/arch/sys_proto.h>
 #include <asm/io.h>
+#include <linux/bitfield.h>
 #include <linux/delay.h>
+#include <linux/errno.h>
+#include <linux/string.h>
 
 #define LOCK		0
 #define SPLIT		1
@@ -262,6 +266,28 @@ void initialize_tcm(bool mode)
 	}
 }
 
+int check_tcm_mode(bool mode)
+{
+	u32 tmp, cpu_state;
+	bool mode_prev;
+
+	tmp = readl(&rpu_base->rpu_glbl_ctrl);
+	mode_prev = FIELD_GET(ZYNQMP_RPU_GLBL_CTRL_SPLIT_LOCK_MASK, tmp);
+
+	tmp = readl(&crlapb_base->rst_lpd_top);
+	cpu_state = FIELD_GET(ZYNQMP_CRLAPB_RST_LPD_R50_RST_MASK |
+			      ZYNQMP_CRLAPB_RST_LPD_R51_RST_MASK, tmp);
+	cpu_state = cpu_state ? false : true;
+
+	if ((mode_prev == SPLIT && mode == LOCK) && cpu_state)
+		return -EACCES;
+
+	if (mode_prev == mode)
+		return -EAGAIN;
+
+	return 0;
+}
+
 static void mark_r5_used(u32 nr, u8 mode)
 {
 	u32 mask = 0;
@@ -326,7 +352,7 @@ int cpu_release(u32 nr, int argc, char *const argv[])
 		 */
 		flush_dcache_all();
 
-		if (!strncmp(argv[1], "lockstep", 8)) {
+		if (!strcmp(argv[1], "lockstep") || !strcmp(argv[1], "0")) {
 			if (nr != ZYNQMP_CORE_RPU0) {
 				printf("Lockstep mode should run on ZYNQMP_CORE_RPU0\n");
 				return 1;
@@ -343,7 +369,7 @@ int cpu_release(u32 nr, int argc, char *const argv[])
 			dcache_enable();
 			set_r5_halt_mode(nr, RELEASE, LOCK);
 			mark_r5_used(nr, LOCK);
-		} else if (!strncmp(argv[1], "split", 5)) {
+		} else if (!strcmp(argv[1], "split") || !strcmp(argv[1], "1")) {
 			printf("R5 split mode\n");
 			set_r5_reset(nr, SPLIT);
 			set_r5_tcm_mode(SPLIT);

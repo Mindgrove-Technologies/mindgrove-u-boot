@@ -21,9 +21,12 @@ struct udevice;
  * @align: Frame-buffer alignment, indicating the memory boundary the frame
  *	buffer should start on. If 0, 1MB is assumed
  * @size: Frame-buffer size, in bytes
- * @base: Base address of frame buffer, 0 if not yet known
- * @copy_base: Base address of a hardware copy of the frame buffer. See
- *	CONFIG_VIDEO_COPY.
+ * @base: Base address of frame buffer, 0 if not yet known. If CONFIG_VIDEO_COPY
+ *	is enabled, this is the software copy, so writes to this will not be
+ *	visible until vidconsole_sync_copy() is called. If CONFIG_VIDEO_COPY is
+ *	disabled, this is the hardware framebuffer.
+ * @copy_base: Base address of a hardware copy of the frame buffer. If
+ *	CONFIG_VIDEO_COPY is disabled, this is not used.
  * @copy_size: Size of copy framebuffer, used if @size is 0
  * @hide_logo: Hide the logo (used for testing)
  */
@@ -54,12 +57,8 @@ enum video_log2_bpp {
 	VIDEO_BPP32,
 };
 
-/*
- * Convert enum video_log2_bpp to bytes and bits. Note we omit the outer
- * brackets to allow multiplication by fractional pixels.
- */
-#define VNBYTES(bpix)	(1 << (bpix)) / 8
-
+/* Convert enum video_log2_bpp to bytes and bits */
+#define VNBYTES(bpix)	((1 << (bpix)) / 8)
 #define VNBITS(bpix)	(1 << (bpix))
 
 enum video_format {
@@ -75,7 +74,8 @@ enum video_format {
  *
  * @xsize:	Number of pixel columns (e.g. 1366)
  * @ysize:	Number of pixels rows (e.g.. 768)
- * @rot:	Display rotation (0=none, 1=90 degrees clockwise, etc.)
+ * @rot:	Display rotation (0=none, 1=90 degrees clockwise, etc.). THis
+ *		does not affect @xsize and @ysize
  * @bpix:	Encoded bits per pixel (enum video_log2_bpp)
  * @format:	Pixel format (enum video_format)
  * @vidconsole_drv_name:	Driver to use for the text console, NULL to
@@ -94,6 +94,7 @@ enum video_format {
  *		the LCD is updated
  * @fg_col_idx:	Foreground color code (bit 3 = bold, bit 0-2 = color)
  * @bg_col_idx:	Background color code (bit 3 = bold, bit 0-2 = color)
+ * @last_sync:	Monotonic time of last video sync
  */
 struct video_priv {
 	/* Things set up by the driver: */
@@ -118,6 +119,7 @@ struct video_priv {
 	bool flush_dcache;
 	u8 fg_col_idx;
 	u8 bg_col_idx;
+	ulong last_sync;
 };
 
 /**
@@ -148,6 +150,7 @@ struct video_ops {
  *		set by the driver, but if not, the uclass will set it after
  *		probing
  * @bpix:	Encoded bits per pixel (enum video_log2_bpp)
+ * @format:	Video format (enum video_format)
  */
 struct video_handoff {
 	u64 fb;
@@ -156,6 +159,7 @@ struct video_handoff {
 	u16 ysize;
 	u32 line_length;
 	u8 bpix;
+	u8 format;
 };
 
 /** enum colour_idx - the 16 colors supported by consoles */
@@ -176,6 +180,7 @@ enum colour_idx {
 	VID_LIGHT_MAGENTA,
 	VID_LIGHT_CYAN,
 	VID_WHITE,
+	VID_DARK_GREY,
 
 	VID_COLOUR_COUNT
 };
@@ -260,7 +265,7 @@ int video_fill_part(struct udevice *dev, int xstart, int ystart, int xend,
 int video_sync(struct udevice *vid, bool force);
 
 /**
- * video_sync_all() - Sync all devices' frame buffers with there hardware
+ * video_sync_all() - Sync all devices' frame buffers with their hardware
  *
  * This calls video_sync() on all active video devices.
  */
@@ -414,5 +419,16 @@ int bmp_info(ulong addr);
  * Returns: 0 (always)
  */
 int video_reserve_from_bloblist(struct video_handoff *ho);
+
+/**
+ * video_get_fb() - Get the first framebuffer address
+ *
+ * This function does not probe video devices, so can only be used after a video
+ * device has been activated.
+ *
+ * Return: address of the framebuffer of the first video device found, or 0 if
+ * there is no device
+ */
+ulong video_get_fb(void);
 
 #endif

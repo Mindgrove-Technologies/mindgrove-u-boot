@@ -5,7 +5,8 @@
  *  Copyright (c) 2018 Heinrich Schuchardt
  */
 
-#include <common.h>
+#define LOG_CATEGORY LOGC_EFI
+
 #include <malloc.h>
 #include <efi_dt_fixup.h>
 #include <efi_loader.h>

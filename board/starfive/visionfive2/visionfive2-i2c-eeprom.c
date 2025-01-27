@@ -4,7 +4,6 @@
  * Author: Yanhong Wang<yanhong.wang@starfivetech.com>
  */
 
-#include <common.h>
 #include <command.h>
 #include <env.h>
 #include <i2c.h>
@@ -190,6 +189,7 @@ static void show_eeprom(void)
 		       pbuf.eeprom.atom4.data.mac1_addr[4], pbuf.eeprom.atom4.data.mac1_addr[5]);
 	} else {
 		printf("Custom data v%d is not Supported\n", pbuf.eeprom.atom4.data.version);
+		dump_raw_eeprom();
 	}
 	printf("--------EEPROM INFO--------\n\n");
 }
@@ -404,27 +404,30 @@ static void set_product_id(char *string)
 	update_crc();
 }
 
-static int print_usage(void)
+/**
+ * set_vendor() - set vendor name
+ *
+ * Takes a pointer to a string representing the vendor name, e.g.
+ * "StarFive Technology Co., Ltd.", stores it in the vendor field
+ * of the EEPROM local copy, and updates the CRC of the local copy.
+ */
+static void set_vendor(char *string)
 {
-	printf("display and program the system ID and MAC addresses in EEPROM\n"
-	"[read_eeprom|initialize|write_eeprom|mac_address|pcb_revision|bom_revision|product_id]\n"
-	"mac read_eeprom\n"
-	"    - read EEPROM content into memory data structure\n"
-	"mac write_eeprom\n"
-	"    - save memory data structure to the EEPROM\n"
-	"mac initialize\n"
-	"    - initialize the in-memory EEPROM copy with default data\n"
-	"mac mac0_address <xx:xx:xx:xx:xx:xx>\n"
-	"    - stores a MAC0 address into the local EEPROM copy\n"
-	"mac mac1_address <xx:xx:xx:xx:xx:xx>\n"
-	"    - stores a MAC1 address into the local EEPROM copy\n"
-	"mac pcb_revision <?>\n"
-	"    - stores a StarFive PCB revision into the local EEPROM copy\n"
-	"mac bom_revision <A>\n"
-	"    - stores a StarFive BOM revision into the local EEPROM copy\n"
-	"mac product_id <VF7110A1-2228-D008E000-xxxxxxxx>\n"
-	"    - stores a StarFive product ID into the local EEPROM copy\n");
-	return 0;
+	memset(pbuf.eeprom.atom1.data.vstr, 0,
+	       sizeof(pbuf.eeprom.atom1.data.vstr));
+
+	strncpy(pbuf.eeprom.atom1.data.vstr,
+		string, sizeof(pbuf.eeprom.atom1.data.vstr) - 1);
+
+	update_crc();
+}
+
+const char *get_product_id_from_eeprom(void)
+{
+	if (read_eeprom())
+		return NULL;
+
+	return pbuf.eeprom.atom1.data.pstr;
 }
 
 int do_mac(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
@@ -437,7 +440,7 @@ int do_mac(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 	}
 
 	if (argc > 3)
-		return print_usage();
+		return CMD_RET_USAGE;
 
 	cmd = argv[1];
 
@@ -450,10 +453,13 @@ int do_mac(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 		return 0;
 	} else if (!strcmp(cmd, "write_eeprom")) {
 		return prog_eeprom(STARFIVE_EEPROM_HATS_SIZE_MAX);
+	} else if (!strcmp(cmd, "raw")) {
+		dump_raw_eeprom();
+		return 0;
 	}
 
 	if (argc != 3)
-		return print_usage();
+		return CMD_RET_USAGE;
 
 	if (is_match_magic()) {
 		printf("Please read the EEPROM ('read_eeprom') and/or initialize the EEPROM ('initialize') first.\n");
@@ -475,9 +481,12 @@ int do_mac(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 	} else if (!strcmp(cmd, "product_id")) {
 		set_product_id(argv[2]);
 		return 0;
+	} else if (!strcmp(cmd, "vendor")) {
+		set_vendor(argv[2]);
+		return 0;
 	}
 
-	return print_usage();
+	return CMD_RET_USAGE;
 }
 
 /**
@@ -504,7 +513,7 @@ int mac_read_from_eeprom(void)
 	}
 
 	// 1, setup ethaddr env
-	eth_env_set_enetaddr("eth0addr", pbuf.eeprom.atom4.data.mac0_addr);
+	eth_env_set_enetaddr("ethaddr", pbuf.eeprom.atom4.data.mac0_addr);
 	eth_env_set_enetaddr("eth1addr", pbuf.eeprom.atom4.data.mac1_addr);
 
 	/**
@@ -515,7 +524,7 @@ int mac_read_from_eeprom(void)
 	 * "<product>-<date>-<DDR&eMMC>-<serial_number>"
 	 * <date>: 4Byte, should be the output of `date +%y%W`
 	 * <DDR&eMMC>: 8Byte, "D008" means 8GB, "D01T" means 1TB;
-	 *     "E000" means no eMMC，"E032" means 32GB, "E01T" means 1TB.
+	 *     "E000" means no eMMC, "E032" means 32GB, "E01T" means 1TB.
 	 * <serial_number>: 8Byte, the Unique Identifier of board in hex.
 	 */
 	if (!env_get("serial#"))
@@ -545,7 +554,7 @@ u8 get_pcb_revision_from_eeprom(void)
  * get_ddr_size_from_eeprom - get the DDR size
  * pstr:  VF7110A1-2228-D008E000-00000001
  * VF7110A1/VF7110B1 : VisionFive JH7110A /VisionFive JH7110B
- * D008:　8GB LPDDR4
+ * D008: 8GB LPDDR4
  * E000: No emmc device, ECxx: include emmc device, xx: Capacity size[GB]
  * return: the field of 'D008E000'
  */
@@ -559,3 +568,50 @@ u32 get_ddr_size_from_eeprom(void)
 
 	return hextoul(&pbuf.eeprom.atom1.data.pstr[14], NULL);
 }
+
+u32 get_mmc_size_from_eeprom(void)
+{
+	u32 size;
+
+	if (IS_ENABLED(CONFIG_STARFIVE_NO_EMMC))
+		return 0;
+
+	if (read_eeprom())
+		return 0;
+
+	size = dectoul(&pbuf.eeprom.atom1.data.pstr[19], NULL);
+
+	if (pbuf.eeprom.atom1.data.pstr[21] == 'T')
+		size <<= 10;
+
+	return size;
+}
+
+U_BOOT_LONGHELP(mac,
+	"\n"
+	"    - display EEPROM content\n"
+	"mac read_eeprom\n"
+	"    - read EEPROM content into memory data structure\n"
+	"mac write_eeprom\n"
+	"    - save memory data structure to the EEPROM\n"
+	"mac initialize\n"
+	"    - initialize the in-memory EEPROM copy with default data\n"
+	"mac raw\n"
+	"    - hexdump memory data structure\n"
+	"mac mac0_address <xx:xx:xx:xx:xx:xx>\n"
+	"    - stores a MAC0 address into the local EEPROM copy\n"
+	"mac mac1_address <xx:xx:xx:xx:xx:xx>\n"
+	"    - stores a MAC1 address into the local EEPROM copy\n"
+	"mac pcb_revision <?>\n"
+	"    - stores a StarFive PCB revision into the local EEPROM copy\n"
+	"mac bom_revision <A>\n"
+	"    - stores a StarFive BOM revision into the local EEPROM copy\n"
+	"mac product_id <VF7110A1-2228-D008E000-xxxxxxxx>\n"
+	"    - stores a StarFive product ID into the local EEPROM copy\n"
+	"mac vendor <Vendor Name>\n"
+	"    - set vendor string\n");
+
+U_BOOT_CMD(
+	mac, 3, 1,  do_mac,
+	"display and program the board revision and MAC address in EEPROM",
+	mac_help_text);

@@ -23,6 +23,7 @@
 #include <linux/err.h>
 #include <linux/io.h>
 #include <linux/iopoll.h>
+#include <linux/printk.h>
 
 #define AVE_GRST_DELAY_MSEC	40
 #define AVE_MIN_XMITSIZE	60
@@ -776,7 +777,7 @@ static int ave_of_to_plat(struct udevice *dev)
 		if (ret) {
 			dev_err(dev, "Failed to get clocks property: %d\n",
 				ret);
-			goto out_clk_free;
+			return ret;
 		}
 		priv->nclks++;
 	}
@@ -822,9 +823,6 @@ static int ave_of_to_plat(struct udevice *dev)
 out_reset_free:
 	while (--nr >= 0)
 		reset_free(&priv->rst[nr]);
-out_clk_free:
-	while (--nc >= 0)
-		clk_free(&priv->clk[nc]);
 
 	return ret;
 }

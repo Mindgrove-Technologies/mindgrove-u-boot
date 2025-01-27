@@ -9,7 +9,11 @@
 #ifndef __ABUF_H
 #define __ABUF_H
 
+#ifdef USE_HOSTCC
+#include <sys/types.h>
+#else
 #include <linux/types.h>
+#endif
 
 /**
  * struct abuf - buffer that can be allocated and freed
@@ -41,6 +45,14 @@ static inline size_t abuf_size(const struct abuf *abuf)
 {
 	return abuf->size;
 }
+
+/**
+ * abuf_addr() - Get the address of a buffer's data
+ *
+ * @abuf: Buffer to check
+ * Return: address of buffer
+ */
+ulong abuf_addr(const struct abuf *abuf);
 
 /**
  * abuf_set() - set the (unallocated) data in a buffer
@@ -91,6 +103,15 @@ void abuf_map_sysmem(struct abuf *abuf, ulong addr, size_t size);
 bool abuf_realloc(struct abuf *abuf, size_t new_size);
 
 /**
+ * abuf_realloc_inc() - Increment abuf size by a given amount
+ *
+ * @abuf: abuf to adjust
+ * @inc: Size incrmement to use (the buffer size will be increased by this much)
+ * Return: true if OK, false if out of memory
+ */
+bool abuf_realloc_inc(struct abuf *abuf, size_t inc);
+
+/**
  * abuf_uninit_move() - Return the allocated contents and uninit the abuf
  *
  * This returns the abuf data to the caller, allocating it if necessary, so that
@@ -135,6 +156,19 @@ void abuf_init_move(struct abuf *abuf, void *data, size_t size);
  * @size: New size of abuf
  */
 void abuf_init_set(struct abuf *abuf, void *data, size_t size);
+
+/**
+ * abuf_init_const() - Set up a new const abuf
+ *
+ * Inits a new abuf and sets up its (unallocated) data. The only current
+ * difference between this and abuf_init_set() is the 'data' parameter is a
+ * const pointer. At some point a flag could be used to indicate const-ness.
+ *
+ * @abuf: abuf to set up
+ * @data: New contents of abuf
+ * @size: New size of abuf
+ */
+void abuf_init_const(struct abuf *abuf, const void *data, size_t size);
 
 /**
  * abuf_uninit() - Free any memory used by an abuf

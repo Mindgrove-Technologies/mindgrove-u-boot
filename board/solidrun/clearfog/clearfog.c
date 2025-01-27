@@ -3,7 +3,7 @@
  * Copyright (C) 2015 Stefan Roese <sr@denx.de>
  */
 
-#include <common.h>
+#include <config.h>
 #include <env.h>
 #include <i2c.h>
 #include <init.h>
@@ -36,7 +36,7 @@ DECLARE_GLOBAL_DATA_PTR;
 #define BOARD_GPP_POL_LOW	0x0
 #define BOARD_GPP_POL_MID	0x0
 
-static struct tlv_data cf_tlv_data;
+static struct tlv_data cf_tlv_data = { 0 };
 
 static void cf_read_tlv_data(void)
 {
@@ -90,9 +90,22 @@ int hws_board_topology_load(struct serdes_map **serdes_map_array, u8 *count)
 
 	/* Apply runtime detection changes */
 	if (sr_product_is(&cf_tlv_data, "Clearfog GTR")) {
-		board_serdes_map[0].serdes_type = PEX0;
-		board_serdes_map[0].serdes_speed = SERDES_SPEED_5_GBPS;
-		board_serdes_map[0].serdes_mode = PEX_ROOT_COMPLEX_X1;
+		if (IS_ENABLED(CONFIG_CLEARFOG_GTR_SERDES0_SATA)) {
+			/* serdes 0 is sata (like clearfog pro) */
+		} else if (IS_ENABLED(CONFIG_CLEARFOG_GTR_SERDES0_PCIE)) {
+			/* serdes 0 is pci */
+			board_serdes_map[0].serdes_type = PEX0;
+			board_serdes_map[0].serdes_speed = SERDES_SPEED_5_GBPS;
+			board_serdes_map[0].serdes_mode = PEX_ROOT_COMPLEX_X1;
+		}
+		/* serdes 1 is 2.5Gbps fixed link to ethernet switch */
+		board_serdes_map[1].serdes_type = SGMII1;
+		board_serdes_map[1].serdes_speed = SERDES_SPEED_3_125_GBPS;
+		board_serdes_map[1].serdes_mode = SERDES_DEFAULT_MODE;
+		/* serdes 2 is pci (like clearfog pro) */
+		/* serdes 3 is usb-3 (like clearfog pro) */
+		/* serdes 4 is pci (like clearfog pro) */
+		/* serdes 5 is sfp connector (like clearfog pro) */
 	} else if (sr_product_is(&cf_tlv_data, "Clearfog Pro")) {
 		/* handle recognized product as noop, no adjustment required */
 	} else if (sr_product_is(&cf_tlv_data, "Clearfog Base")) {
@@ -159,12 +172,27 @@ struct mv_ddr_topology_map *mv_ddr_topology_map_get(void)
 	cf_read_tlv_data();
 
 	switch (cf_tlv_data.ram_size) {
+	case 2:
+		ifp->memory_size = MV_DDR_DIE_CAP_2GBIT;
+		break;
 	case 4:
 	default:
 		ifp->memory_size = MV_DDR_DIE_CAP_4GBIT;
 		break;
 	case 8:
 		ifp->memory_size = MV_DDR_DIE_CAP_8GBIT;
+		break;
+	}
+
+	switch (cf_tlv_data.ram_channels) {
+	default:
+	case 1:
+		for (uint8_t i = 0; i < 5; i++)
+			ifp->as_bus_params[i].cs_bitmask = 0x1;
+		break;
+	case 2:
+		for (uint8_t i = 0; i < 5; i++)
+			ifp->as_bus_params[i].cs_bitmask = 0x3;
 		break;
 	}
 

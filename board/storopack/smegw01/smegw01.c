@@ -12,7 +12,6 @@
 #include <asm/mach-imx/hab.h>
 #include <asm/mach-imx/iomux-v3.h>
 #include <asm/io.h>
-#include <common.h>
 #include <env.h>
 #include <env_internal.h>
 #include <asm/arch/crm_regs.h>
@@ -106,23 +105,8 @@ uint mmc_get_env_part(struct mmc *mmc)
 {
 	uint part = EXT_CSD_EXTRACT_BOOT_PART(mmc->part_config);
 
-	if (part == 7)
-		part = 0;
+	if (part == EMMC_BOOT_PART_USER)
+		part = EMMC_HWPART_DEFAULT;
 	return part;
 }
 
-enum env_location env_get_location(enum env_operation op, int prio)
-{
-	if (op == ENVOP_SAVE || op == ENVOP_ERASE)
-		return ENVL_MMC;
-
-	switch (prio) {
-	case 0:
-		return ENVL_NOWHERE;
-
-	case 1:
-		return ENVL_MMC;
-	}
-
-	return ENVL_UNKNOWN;
-}

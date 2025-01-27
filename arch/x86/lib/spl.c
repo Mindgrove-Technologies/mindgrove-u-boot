@@ -5,7 +5,6 @@
 
 #define LOG_CATEGORY	LOGC_BOOT
 
-#include <common.h>
 #include <cpu_func.h>
 #include <debug_uart.h>
 #include <dm.h>
@@ -27,7 +26,9 @@
 #include <asm/mtrr.h>
 #include <asm/pci.h>
 #include <asm/processor.h>
+#include <asm/qemu.h>
 #include <asm/spl.h>
+#include <asm/u-boot-x86.h>
 #include <asm-generic/sections.h>
 
 DECLARE_GLOBAL_DATA_PTR;
@@ -137,10 +138,9 @@ static int x86_spl_init(void)
 	}
 
 #ifndef CONFIG_SYS_COREBOOT
-	log_debug("bss\n");
-	debug("BSS clear from %lx to %lx len %lx\n", (ulong)&__bss_start,
-	      (ulong)&__bss_end, (ulong)&__bss_end - (ulong)&__bss_start);
-	memset(&__bss_start, 0, (ulong)&__bss_end - (ulong)&__bss_start);
+	debug("BSS clear from %lx to %lx len %lx\n", (ulong)__bss_start,
+	      (ulong)__bss_end, (ulong)__bss_end - (ulong)__bss_start);
+	memset(__bss_start, 0, (ulong)__bss_end - (ulong)__bss_start);
 # ifndef CONFIG_TPL
 
 	/* TODO(sjg@chromium.org): Consider calling cpu_init_r() here */
@@ -230,6 +230,9 @@ void board_init_f_r(void)
 	mtrr_commit(false);
 	init_cache();
 	gd->flags &= ~GD_FLG_SERIAL_READY;
+
+	/* make sure driver model is not accessed from now on */
+	gd->flags |= GD_FLG_DM_DEAD;
 	debug("cache status %d\n", dcache_status());
 	board_init_r(gd, 0);
 }
@@ -258,7 +261,7 @@ static int spl_board_load_image(struct spl_image_info *spl_image,
 	spl_image->os = IH_OS_U_BOOT;
 	spl_image->name = "U-Boot";
 
-	if (!IS_ENABLED(CONFIG_SYS_COREBOOT)) {
+	if (spl_image->load_addr != spl_get_image_pos()) {
 		/* Copy U-Boot from ROM */
 		memcpy((void *)spl_image->load_addr,
 		       (void *)spl_get_image_pos(), spl_get_image_size());
@@ -292,12 +295,22 @@ void spl_board_init(void)
 #ifndef CONFIG_TPL
 	preloader_console_init();
 #endif
+	if (IS_ENABLED(CONFIG_QEMU))
+		qemu_chipset_init();
+
+	if (CONFIG_IS_ENABLED(UPL_OUT))
+		gd->flags |= GD_FLG_UPL;
 
 	if (CONFIG_IS_ENABLED(VIDEO)) {
 		struct udevice *dev;
+		int ret;
 
 		/* Set up PCI video in SPL if required */
-		uclass_first_device_err(UCLASS_PCI, &dev);
-		uclass_first_device_err(UCLASS_VIDEO, &dev);
+		ret = uclass_first_device_err(UCLASS_PCI, &dev);
+		if (ret)
+			panic("Failed to set up PCI");
+		ret = uclass_first_device_err(UCLASS_VIDEO, &dev);
+		if (ret)
+			panic("Failed to set up video");
 	}
 }

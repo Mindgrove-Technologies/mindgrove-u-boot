@@ -3,7 +3,6 @@
  * Copyright 2010-2011 Calxeda, Inc.
  */
 
-#include <common.h>
 #include <ahci.h>
 #include <cpu_func.h>
 #include <env.h>
@@ -52,19 +51,6 @@ int board_init(void)
 	return 0;
 }
 
-#ifdef CONFIG_SCSI_AHCI_PLAT
-void scsi_init(void)
-{
-	u32 reg = readl(HB_SREG_A9_PWRDOM_STAT);
-
-	cphy_disable_overrides();
-	if (reg & PWRDOM_STAT_SATA) {
-		ahci_init((void __iomem *)HB_AHCI_BASE);
-		scsi_scan(true);
-	}
-}
-#endif
-
 #ifdef CONFIG_MISC_INIT_R
 int misc_init_r(void)
 {
@@ -111,15 +97,16 @@ int ft_board_setup(void *fdt, struct bd_info *bd)
 }
 #endif
 
-void *board_fdt_blob_setup(int *err)
+int board_fdt_blob_setup(void **fdtp)
 {
-	*err = 0;
 	/*
 	 * The ECME management processor loads the DTB from NOR flash
 	 * into DRAM (at 4KB), where it gets patched to contain the
 	 * detected memory size.
 	 */
-	return (void *)0x1000;
+	*fdtp = (void *)0x1000;
+
+	return 0;
 }
 
 static int is_highbank(void)

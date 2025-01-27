@@ -176,6 +176,37 @@ int fill_char_horizontally(uchar *pfont, void **line, struct video_priv *vid_pri
 	return ret;
 }
 
+int draw_cursor_vertically(void **line, struct video_priv *vid_priv,
+			   uint height, bool direction)
+{
+	int step, line_step, pbytes, ret;
+	uint value;
+	void *dst;
+
+	ret = check_bpix_support(vid_priv->bpix);
+	if (ret)
+		return ret;
+
+	pbytes = VNBYTES(vid_priv->bpix);
+	if (direction) {
+		step = -pbytes;
+		line_step = -vid_priv->line_length;
+	} else {
+		step = pbytes;
+		line_step = vid_priv->line_length;
+	}
+
+	value = vid_priv->colour_fg;
+
+	for (int row = 0; row < height; row++) {
+		dst = *line;
+		for (int col = 0; col < VIDCONSOLE_CURSOR_WIDTH; col++)
+			fill_pixel_and_goto_next(&dst, value, pbytes, step);
+		*line += line_step;
+	}
+	return ret;
+}
+
 int console_probe(struct udevice *dev)
 {
 	return console_set_font(dev, fonts);
@@ -194,7 +225,7 @@ int console_simple_get_font(struct udevice *dev, int seq, struct vidfont_info *i
 {
 	info->name = fonts[seq].name;
 
-	return 0;
+	return info->name ? 0 : -ENOENT;
 }
 
 int console_simple_select_font(struct udevice *dev, const char *name, uint size)

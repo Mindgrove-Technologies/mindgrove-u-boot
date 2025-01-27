@@ -3,7 +3,7 @@
 # (C) Copyright 2004-2006
 # Wolfgang Denk, DENX Software Engineering, wd@denx.de.
 
-ifndef CONFIG_SPL_BUILD
+ifndef CONFIG_XPL_BUILD
 # core command
 obj-y += boot.o
 obj-$(CONFIG_CMD_BOOTM) += bootm.o
@@ -12,17 +12,18 @@ obj-y += panic.o
 obj-y += version.o
 
 # command
+obj-$(CONFIG_CMD_ARMFFA) += armffa.o
 obj-$(CONFIG_CMD_2048) += 2048.o
 obj-$(CONFIG_CMD_ACPI) += acpi.o
 obj-$(CONFIG_CMD_ADDRMAP) += addrmap.o
 obj-$(CONFIG_CMD_AES) += aes.o
-obj-$(CONFIG_CMD_AB_SELECT) += ab_select.o
 obj-$(CONFIG_CMD_ADC) += adc.o
 obj-$(CONFIG_CMD_ARMFLASH) += armflash.o
 obj-$(CONFIG_BLK) += blk_common.o
 obj-$(CONFIG_CMD_BOOTDEV) += bootdev.o
 obj-$(CONFIG_CMD_BOOTFLOW) += bootflow.o
 obj-$(CONFIG_CMD_BOOTMETH) += bootmeth.o
+obj-$(CONFIG_CMD_BOOTSTD) += bootstd.o
 obj-$(CONFIG_CMD_SOURCE) += source.o
 obj-$(CONFIG_CMD_BCB) += bcb.o
 obj-$(CONFIG_CMD_BDI) += bdinfo.o
@@ -53,6 +54,7 @@ obj-$(CONFIG_CMD_CPU) += cpu.o
 obj-$(CONFIG_CMD_DATE) += date.o
 obj-$(CONFIG_CMD_DEMO) += demo.o
 obj-$(CONFIG_CMD_DM) += dm.o
+obj-$(CONFIG_CMD_UFETCH) += ufetch.o
 obj-$(CONFIG_CMD_SOUND) += sound.o
 ifdef CONFIG_POST
 obj-$(CONFIG_CMD_DIAG) += diag.o
@@ -90,6 +92,7 @@ obj-$(CONFIG_CMD_FUSE) += fuse.o
 obj-$(CONFIG_CMD_FWU_METADATA) += fwu_mdata.o
 obj-$(CONFIG_CMD_GETTIME) += gettime.o
 obj-$(CONFIG_CMD_GPIO) += gpio.o
+obj-$(CONFIG_CMD_HISTORY) += history.o
 obj-$(CONFIG_CMD_HVC) += smccc.o
 obj-$(CONFIG_CMD_I2C) += i2c.o
 obj-$(CONFIG_CMD_IOTRACE) += iotrace.o
@@ -106,9 +109,9 @@ obj-$(CONFIG_CMD_LICENSE) += license.o
 obj-y += load.o
 obj-$(CONFIG_CMD_LOG) += log.o
 obj-$(CONFIG_CMD_LSBLK) += lsblk.o
-obj-$(CONFIG_ID_EEPROM) += mac.o
 obj-$(CONFIG_CMD_MD5SUM) += md5sum.o
 obj-$(CONFIG_CMD_MEMORY) += mem.o
+obj-$(CONFIG_CMD_MEMINFO) += meminfo.o
 obj-$(CONFIG_CMD_IO) += io.o
 obj-$(CONFIG_CMD_MII) += mii.o
 obj-$(CONFIG_CMD_MISC) += misc.o
@@ -117,6 +120,7 @@ obj-$(CONFIG_CMD_PAUSE) += pause.o
 obj-$(CONFIG_CMD_SLEEP) += sleep.o
 obj-$(CONFIG_CMD_MMC) += mmc.o
 obj-$(CONFIG_CMD_OPTEE_RPMB) += optee_rpmb.o
+obj-$(CONFIG_CMD_OPTEE) += optee.o
 obj-$(CONFIG_CMD_MP) += mp.o
 obj-$(CONFIG_CMD_MTD) += mtd.o
 obj-$(CONFIG_CMD_MTDPARTS) += mtdparts.o
@@ -126,7 +130,12 @@ obj-y += legacy-mtd-utils.o
 endif
 obj-$(CONFIG_CMD_MUX) += mux.o
 obj-$(CONFIG_CMD_NAND) += nand.o
-obj-$(CONFIG_CMD_NET) += net.o
+ifdef CONFIG_NET
+obj-$(CONFIG_CMD_NET) += net.o net-common.o
+else ifdef CONFIG_NET_LWIP
+obj-$(CONFIG_CMD_NET) += net-lwip.o net-common.o
+endif
+obj-$(CONFIG_ENV_SUPPORT) += nvedit.o
 obj-$(CONFIG_CMD_NVEDIT_EFI) += nvedit_efi.o
 obj-$(CONFIG_CMD_ONENAND) += onenand.o
 obj-$(CONFIG_CMD_OSD) += osd.o
@@ -150,6 +159,7 @@ obj-$(CONFIG_CMD_REISER) += reiser.o
 obj-$(CONFIG_CMD_REMOTEPROC) += remoteproc.o
 obj-$(CONFIG_CMD_RNG) += rng.o
 obj-$(CONFIG_CMD_KASLRSEED) += kaslrseed.o
+obj-$(CONFIG_CMD_RKMTD) += rkmtd.o
 obj-$(CONFIG_CMD_ROCKUSB) += rockusb.o
 obj-$(CONFIG_CMD_RTC) += rtc.o
 obj-$(CONFIG_SANDBOX) += host.o
@@ -157,6 +167,7 @@ obj-$(CONFIG_CMD_SATA) += sata.o
 obj-$(CONFIG_CMD_NVME) += nvme.o
 obj-$(CONFIG_SANDBOX) += sb.o
 obj-$(CONFIG_CMD_SF) += sf.o
+obj-$(CONFIG_CMD_SCMI) += scmi.o
 obj-$(CONFIG_CMD_SCSI) += scsi.o disk.o
 obj-$(CONFIG_CMD_SHA1SUM) += sha1sum.o
 obj-$(CONFIG_CMD_SEAMA) += seama.o
@@ -164,9 +175,11 @@ obj-$(CONFIG_CMD_SETEXPR) += setexpr.o
 obj-$(CONFIG_CMD_SETEXPR_FMT) += printf.o
 obj-$(CONFIG_CMD_SPI) += spi.o
 obj-$(CONFIG_CMD_STRINGS) += strings.o
+obj-$(CONFIG_CMD_SMBIOS) += smbios.o
 obj-$(CONFIG_CMD_SMC) += smccc.o
 obj-$(CONFIG_CMD_SYSBOOT) += sysboot.o
 obj-$(CONFIG_CMD_STACKPROTECTOR_TEST) += stackprot_test.o
+obj-$(CONFIG_CMD_TCPM) += tcpm.o
 obj-$(CONFIG_CMD_TEMPERATURE) += temperature.o
 obj-$(CONFIG_CMD_TERMINAL) += terminal.o
 obj-$(CONFIG_CMD_TIME) += time.o
@@ -184,6 +197,7 @@ obj-$(CONFIG_CMD_UBIFS) += ubifs.o
 obj-$(CONFIG_CMD_UNIVERSE) += universe.o
 obj-$(CONFIG_CMD_UNLZ4) += unlz4.o
 obj-$(CONFIG_CMD_UNZIP) += unzip.o
+obj-$(CONFIG_CMD_UPL) += upl.o
 obj-$(CONFIG_CMD_VIRTIO) += virtio.o
 obj-$(CONFIG_CMD_WDT) += wdt.o
 obj-$(CONFIG_CMD_LZMADEC) += lzmadec.o
@@ -200,7 +214,6 @@ obj-$(CONFIG_CMD_THOR_DOWNLOAD) += thordown.o
 obj-$(CONFIG_CMD_VBE) += vbe.o
 obj-$(CONFIG_CMD_XIMG) += ximg.o
 obj-$(CONFIG_CMD_XXD) += xxd.o
-obj-$(CONFIG_CMD_YAFFS2) += yaffs2.o
 obj-$(CONFIG_CMD_SPL) += spl.o
 obj-$(CONFIG_CMD_W1) += w1.o
 obj-$(CONFIG_CMD_ZIP) += zip.o
@@ -225,6 +238,8 @@ obj-$(CONFIG_CMD_AVB) += avb.o
 # Foundries.IO SCP03
 obj-$(CONFIG_CMD_SCP03) += scp03.o
 
+obj-$(CONFIG_HUSH_SELECTABLE) += cli.o
+
 obj-$(CONFIG_ARM) += arm/
 obj-$(CONFIG_RISCV) += riscv/
 obj-$(CONFIG_SANDBOX) += sandbox/
@@ -234,16 +249,16 @@ obj-$(CONFIG_X86) += x86/
 obj-$(CONFIG_CMD_MESON) += meson/
 
 obj-$(CONFIG_ARCH_MVEBU) += mvebu/
-endif # !CONFIG_SPL_BUILD
 
-obj-$(CONFIG_$(SPL_)CMD_TLV_EEPROM) += tlv_eeprom.o
+# TI
+obj-$(CONFIG_ARCH_KEYSTONE) += ti/
+obj-$(CONFIG_ARCH_K3) += ti/
+obj-$(CONFIG_ARCH_OMAP2PLUS) += ti/
+endif # !CONFIG_XPL_BUILD
 
-# core command
-obj-y += nvedit.o
+obj-$(CONFIG_$(XPL_)CMD_TLV_EEPROM) += tlv_eeprom.o
 
 obj-$(CONFIG_CMD_BCM_EXT_UTILS) += broadcom/
-
-obj-$(CONFIG_TI_COMMON_CMD_OPTIONS) += ti/
 
 filechk_data_gz = (echo "static const char data_gz[] ="; cat $< | scripts/bin2c; echo ";")
 

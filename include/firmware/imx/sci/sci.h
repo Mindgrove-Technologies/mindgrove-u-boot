@@ -75,6 +75,7 @@ int sc_pm_set_clock_parent(sc_ipc_t ipc, sc_rsrc_t resource, sc_pm_clk_t clk,
 int sc_pm_cpu_start(sc_ipc_t ipc, sc_rsrc_t resource, sc_bool_t enable,
 		    sc_faddr_t address);
 void sc_pm_reboot(sc_ipc_t ipc, sc_pm_reset_type_t type);
+int sc_pm_reset_reason(sc_ipc_t ipc, sc_pm_reset_reason_t *reason);
 sc_bool_t sc_pm_is_partition_started(sc_ipc_t ipc, sc_rm_pt_t pt);
 int sc_pm_resource_reset(sc_ipc_t ipc, sc_rsrc_t resource);
 
@@ -122,6 +123,7 @@ int sc_rm_set_master_sid(sc_ipc_t ipc, sc_rsrc_t resource, sc_rm_sid_t sid);
 
 /* Timer API */
 int sc_timer_set_wdog_window(sc_ipc_t ipc, sc_timer_wdog_time_t window);
+int sc_timer_control_siemens_pmic_wdog(sc_ipc_t ipc, u8 cmd);
 
 /* SECO API */
 int sc_seco_authenticate(sc_ipc_t ipc, sc_seco_auth_cmd_t cmd,
@@ -383,6 +385,11 @@ static inline int sc_seco_secvio_config(sc_ipc_t ipc, u8 id, u8 access, u32 *dat
 
 static inline void sc_pm_reboot(sc_ipc_t ipc, sc_pm_reset_type_t type)
 {
+}
+
+static inline int sc_pm_reset_reason(sc_ipc_t ipc, sc_pm_reset_reason_t *reason)
+{
+	return -EOPNOTSUPP;
 }
 
 static inline int sc_seco_v2x_build_info(sc_ipc_t ipc, u32 *version, u32 *commit)

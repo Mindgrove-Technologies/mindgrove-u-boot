@@ -4,6 +4,11 @@
  *
  * (C) Copyright 2012
  * Pavel Herrmann <morpheus.ibis@gmail.com>
+ *
+ * Copyright 2022-2023 Arm Limited and/or its affiliates <open-source-office@arm.com>
+ *
+ * Authors:
+ *   Abdellatif El Khlifi <abdellatif.elkhlifi@arm.com>
  */
 
 #ifndef _DM_UCLASS_ID_H
@@ -57,6 +62,8 @@ enum uclass_id {
 	UCLASS_ETH,		/* Ethernet device */
 	UCLASS_ETH_PHY,		/* Ethernet PHY device */
 	UCLASS_EXTCON,		/* External Connector Class */
+	UCLASS_FFA,		/* Arm Firmware Framework for Armv8-A */
+	UCLASS_FFA_EMUL,		/* sandbox FF-A device emulator */
 	UCLASS_FIRMWARE,	/* Firmware */
 	UCLASS_FPGA,		/* FPGA device */
 	UCLASS_FUZZING_ENGINE,	/* Fuzzing engine */
@@ -82,6 +89,7 @@ enum uclass_id {
 	UCLASS_MDIO,		/* MDIO bus */
 	UCLASS_MDIO_MUX,	/* MDIO MUX/switch */
 	UCLASS_MEMORY,		/* Memory Controller device */
+	UCLASS_SM,		/* Secure Monitor driver */
 	UCLASS_MISC,		/* Miscellaneous device */
 	UCLASS_MMC,		/* SD / MMC card or chip */
 	UCLASS_MOD_EXP,		/* RSA Mod Exp device */
@@ -113,9 +121,11 @@ enum uclass_id {
 	UCLASS_REGULATOR,	/* Regulator device */
 	UCLASS_REMOTEPROC,	/* Remote Processor device */
 	UCLASS_RESET,		/* Reset controller device */
+	UCLASS_RKMTD,		/* Rockchip MTD device */
 	UCLASS_RNG,		/* Random Number Generator */
 	UCLASS_RTC,		/* Real time clock device */
 	UCLASS_SCMI_AGENT,	/* Interface with an SCMI server */
+	UCLASS_SCMI_BASE,	/* Interface for SCMI Base protocol */
 	UCLASS_SCSI,		/* SCSI device */
 	UCLASS_SERIAL,		/* Serial UART */
 	UCLASS_SIMPLE_BUS,	/* Bus with child devices */
@@ -129,6 +139,7 @@ enum uclass_id {
 	UCLASS_SYSCON,		/* System configuration device */
 	UCLASS_SYSINFO,		/* Device information from hardware */
 	UCLASS_SYSRESET,	/* System reset device */
+	UCLASS_TCPM,		/* TypeC port manager */
 	UCLASS_TEE,		/* Trusted Execution Environment device */
 	UCLASS_THERMAL,		/* Thermal sensor */
 	UCLASS_TIMER,		/* Timer device */

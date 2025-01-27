@@ -12,7 +12,7 @@ import u_boot_utils as util
 TMPDIR = '/tmp/test_trace'
 
 # Decode a function-graph line
-RE_LINE = re.compile(r'.*\[000\]\s*([0-9.]*): func.*[|](\s*)(\S.*)?([{};])$')
+RE_LINE = re.compile(r'.*0\.\.\.\.\.? \s*([0-9.]*): func.*[|](\s*)(\S.*)?([{};])$')
 
 
 def collect_trace(cons):
@@ -61,13 +61,39 @@ def collect_trace(cons):
 
     # Read out the trace data
     addr = 0x02000000
-    size = 0x01000000
+    size = 0x02000000
     out = cons.run_command(f'trace calls {addr:x} {size:x}')
     print(out)
     fname = os.path.join(TMPDIR, 'trace')
     out = cons.run_command(
         'host save hostfs - %x %s ${profoffset}' % (addr, fname))
     return fname, int(dm_f_time[0])
+
+
+def wipe_and_collect_trace(cons):
+    """Pause and wipe traces, return the number of calls (should be zero)
+
+    Args:
+        cons (ConsoleBase): U-Boot console
+
+    Returns:
+        int: the number of traced function calls reported by 'trace stats'
+    """
+    cons.run_command('trace pause')
+    cons.run_command('trace wipe')
+    out = cons.run_command('trace stats')
+
+    # The output is something like this:
+    # 117,221 function sites
+    #       0 function calls
+    #       0 untracked function calls
+    #       0 traced function calls
+
+    # Get a dict of values from the output
+    lines = [line.split(maxsplit=1) for line in out.splitlines() if line]
+    vals = {key: val.replace(',', '') for val, key in lines}
+
+    return int(vals['traced function calls'])
 
 
 def check_function(cons, fname, proftool, map_fname, trace_dat):
@@ -113,15 +139,15 @@ def check_function(cons, fname, proftool, map_fname, trace_dat):
     assert val > 50000  # Should be at least 50KB of symbols
 
     # Check that the trace has something useful
-    cmd = f"trace-cmd report {trace_dat} |grep -E '(initf_|initr_)'"
+    cmd = f"trace-cmd report -l {trace_dat} |grep -E '(initf_|initr_)'"
     out = util.run_and_log(cons, ['sh', '-c', cmd])
 
     # Format:
-    # unknown option 14
-    #      u-boot-1     [000]    60.805596: function:             initf_malloc
-    #      u-boot-1     [000]    60.805597: function:             initf_malloc
-    #      u-boot-1     [000]    60.805601: function:             initf_bootstage
-    #      u-boot-1     [000]    60.805607: function:             initf_bootstage
+    #      u-boot-1     0.....    60.805596: function:             initf_malloc
+    #      u-boot-1     0.....    60.805597: function:             initf_malloc
+    #      u-boot-1     0.....    60.805601: function:             initf_bootstage
+    #      u-boot-1     0.....    60.805607: function:             initf_bootstage
+
     lines = [line.replace(':', '').split() for line in out.splitlines()]
     vals = {items[4]: float(items[2]) for items in lines if len(items) == 5}
     base = None
@@ -161,21 +187,21 @@ def check_funcgraph(cons, fname, proftool, map_fname, trace_dat):
                'dump-ftrace', '-f', 'funcgraph'])
 
     # Check that the trace has what we expect
-    cmd = f'trace-cmd report {trace_dat} |head -n 70'
+    cmd = f'trace-cmd report -l {trace_dat} |head -n 70'
     out = util.run_and_log(cons, ['sh', '-c', cmd])
 
     # First look for this:
-    #  u-boot-1     [000]   282.101360: funcgraph_entry:        0.004 us   |    initf_malloc();
+    #  u-boot-1     0.....   282.101360: funcgraph_entry:        0.004 us   |    initf_malloc();
     # ...
-    #  u-boot-1     [000]   282.101369: funcgraph_entry:                   |    initf_bootstage() {
-    #  u-boot-1     [000]   282.101369: funcgraph_entry:                   |      bootstage_init() {
-    #  u-boot-1     [000]   282.101369: funcgraph_entry:                   |        dlmalloc() {
+    #  u-boot-1     0.....   282.101369: funcgraph_entry:                   |    initf_bootstage() {
+    #  u-boot-1     0.....   282.101369: funcgraph_entry:                   |      bootstage_init() {
+    #  u-boot-1     0.....   282.101369: funcgraph_entry:                   |        dlmalloc() {
     # ...
-    #  u-boot-1     [000]   282.101375: funcgraph_exit:         0.001 us   |        }
+    #  u-boot-1     0.....   282.101375: funcgraph_exit:         0.001 us   |        }
     # Then look for this:
-    #  u-boot-1     [000]   282.101375: funcgraph_exit:         0.006 us   |      }
+    #  u-boot-1     0.....   282.101375: funcgraph_exit:         0.006 us   |      }
     # Then check for this:
-    #  u-boot-1     [000]   282.101375: funcgraph_entry:        0.000 us   |    event_init();
+    #  u-boot-1     0.....   282.101375: funcgraph_entry:        0.000 us   |    calc_reloc_ofs();
 
     expected_indent = None
     found_start = False
@@ -197,12 +223,13 @@ def check_funcgraph(cons, fname, proftool, map_fname, trace_dat):
             elif found_start and indent == expected_indent and brace == '}':
                 found_end = True
 
-    # The next function after initf_bootstage() exits should be event_init()
-    assert upto == 'event_init()'
+    # The next function after initf_bootstage() exits should be
+    # initcall_is_event()
+    assert upto == 'calc_reloc_ofs()'
 
     # Now look for initf_dm() and dm_timer_init() so we can check the bootstage
     # time
-    cmd = f"trace-cmd report {trace_dat} |grep -E '(initf_dm|dm_timer_init)'"
+    cmd = f"trace-cmd report -l {trace_dat} |grep -E '(initf_dm|dm_timer_init)'"
     out = util.run_and_log(cons, ['sh', '-c', cmd])
 
     start_timestamp = None
@@ -247,7 +274,7 @@ def check_flamegraph(cons, fname, proftool, map_fname, trace_fg):
     # We expect dm_timer_init() to be called twice: once before relocation and
     # once after
     look1 = 'initf_dm;dm_timer_init 1'
-    look2 = 'board_init_r;initr_dm_devices;dm_timer_init 1'
+    look2 = 'board_init_r;initcall_run_list;initr_dm_devices;dm_timer_init 1'
     found = 0
     with open(trace_fg, 'r') as fd:
         for line in fd:
@@ -272,7 +299,7 @@ def check_flamegraph(cons, fname, proftool, map_fname, trace_fg):
                 total += count
     return total
 
-
+check_flamegraph
 @pytest.mark.slow
 @pytest.mark.boardspec('sandbox')
 @pytest.mark.buildconfigspec('trace')
@@ -303,3 +330,7 @@ def test_trace(u_boot_console):
     # This allows for CI being slow to run
     diff = abs(fg_time - dm_f_time)
     assert diff / dm_f_time < 0.3
+
+    # Check that the trace buffer can be wiped
+    numcalls = wipe_and_collect_trace(cons)
+    assert numcalls == 0

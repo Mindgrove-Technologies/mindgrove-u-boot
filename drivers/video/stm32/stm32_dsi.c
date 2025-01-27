@@ -10,7 +10,6 @@
 
 #define LOG_CATEGORY UCLASS_VIDEO_BRIDGE
 
-#include <common.h>
 #include <clk.h>
 #include <dm.h>
 #include <dsi_host.h>
@@ -26,6 +25,7 @@
 #include <dm/lists.h>
 #include <linux/bitops.h>
 #include <linux/iopoll.h>
+#include <linux/printk.h>
 #include <power/regulator.h>
 
 #define HWVER_130			0x31333000	/* IP version 1.30 */

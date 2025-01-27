@@ -4,7 +4,6 @@
  * Copyright (C) 2017 Bin Meng <bmeng.cn@gmail.com>
  */
 
-#include <common.h>
 #include <blk.h>
 #include <bootdev.h>
 #include <cpu_func.h>
@@ -695,7 +694,9 @@ int nvme_scan_namespace(void)
 		if (ret) {
 			log_err("Failed to probe '%s': err=%dE\n", dev->name,
 				ret);
-			return ret;
+			/* Bail if we ran out of memory, else keep trying */
+			if (ret != -EBUSY)
+				return ret;
 		}
 	}
 
@@ -835,8 +836,8 @@ int nvme_init(struct udevice *udev)
 	ndev->udev = udev;
 	INIT_LIST_HEAD(&ndev->namespaces);
 	if (readl(&ndev->bar->csts) == -1) {
-		ret = -ENODEV;
-		printf("Error: %s: Out of memory!\n", udev->name);
+		ret = -EBUSY;
+		printf("Error: %s: Controller not ready!\n", udev->name);
 		goto free_nvme;
 	}
 
@@ -906,11 +907,11 @@ int nvme_init(struct udevice *udev)
 
 		/* The real blksz and size will be set by nvme_blk_probe() */
 		ret = blk_create_devicef(udev, "nvme-blk", name, UCLASS_NVME,
-					 -1, 512, 0, &ns_udev);
+					 -1, DEFAULT_BLKSZ, 0, &ns_udev);
 		if (ret)
 			goto free_id;
 
-		ret = bootdev_setup_sibling_blk(ns_udev, "nvme_bootdev");
+		ret = bootdev_setup_for_sibling_blk(ns_udev, "nvme_bootdev");
 		if (ret)
 			return log_msg_ret("bootdev", ret);
 

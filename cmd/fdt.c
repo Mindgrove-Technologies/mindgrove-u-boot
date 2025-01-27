@@ -7,7 +7,6 @@
  *   Matthew McClintock <msm@freescale.com>
  */
 
-#include <common.h>
 #include <command.h>
 #include <env.h>
 #include <image.h>
@@ -1113,8 +1112,7 @@ static int fdt_print(const char *pathp, char *prop, int depth)
 }
 
 /********************************************************************/
-#ifdef CONFIG_SYS_LONGHELP
-static char fdt_help_text[] =
+U_BOOT_LONGHELP(fdt,
 	"addr [-c] [-q] <addr> [<size>]  - Set the [control] fdt location to <addr>\n"
 #ifdef CONFIG_OF_LIBFDT_OVERLAY
 	"fdt apply <addr>                    - Apply overlay to the DT\n"
@@ -1153,8 +1151,7 @@ static char fdt_help_text[] =
 	"                                               default gd->fdt_blob\n"
 #endif
 	"NOTE: Dereference aliases by omitting the leading '/', "
-		"e.g. fdt print ethernet0.";
-#endif
+		"e.g. fdt print ethernet0.");
 
 U_BOOT_CMD(
 	fdt,	255,	0,	do_fdt,

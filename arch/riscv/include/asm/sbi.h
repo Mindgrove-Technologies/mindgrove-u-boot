@@ -31,6 +31,12 @@ enum sbi_ext_id {
 	SBI_EXT_DBCN = 0x4442434E,
 	SBI_EXT_SUSP = 0x53555350,
 	SBI_EXT_CPPC = 0x43505043,
+	SBI_EXT_NACL = 0x4E41434C,
+	SBI_EXT_STA = 0x535441,
+	SBI_EXT_SSE = 0x535345,
+	SBI_EXT_FWFT = 0x46574654,
+	SBI_EXT_DBTR = 0x44425452,
+	SBI_EXT_MPXY = 0x4D505859,
 };
 
 enum sbi_ext_base_fid {
@@ -168,5 +174,6 @@ int sbi_get_mvendorid(long *mvendorid);
 int sbi_get_marchid(long *marchid);
 int sbi_get_mimpid(long *mimpid);
 void sbi_srst_reset(unsigned long type, unsigned long reason);
+int sbi_dbcn_write_byte(unsigned char ch);
 
 #endif

@@ -9,7 +9,6 @@
  * Based on drivers/clk/at91/sama7g5.c from Linux.
  */
 
-#include <common.h>
 #include <clk-uclass.h>
 #include <dm.h>
 #include <dt-bindings/clk/at91.h>
@@ -1115,8 +1114,8 @@ static int sama7g5_clk_probe(struct udevice *dev)
 	if (IS_ERR(base))
 		return PTR_ERR(base);
 
-	memset(muxallocs,    0, ARRAY_SIZE(muxallocs));
-	memset(clkmuxallocs, 0, ARRAY_SIZE(clkmuxallocs));
+	memset(muxallocs,    0, sizeof(muxallocs));
+	memset(clkmuxallocs, 0, sizeof(clkmuxallocs));
 
 	ret = clk_get_by_index(dev, 0, &clk);
 	if (ret)

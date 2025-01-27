@@ -6,7 +6,6 @@
  * Copyright (C) 2014-2017 Cogent Embedded, Inc.
  */
 
-#include <common.h>
 #include <dm.h>
 #include <errno.h>
 #include <dm/pinctrl.h>
@@ -25,7 +24,7 @@
 	PORT_GP_CFG_32(3, fn, sfx, SH_PFC_PIN_CFG_PULL_UP),		\
 	PORT_GP_CFG_32(4, fn, sfx, SH_PFC_PIN_CFG_PULL_UP),		\
 	PORT_GP_CFG_32(5, fn, sfx, SH_PFC_PIN_CFG_PULL_UP),		\
-	PORT_GP_CFG_24(6, fn, sfx, SH_PFC_PIN_CFG_IO_VOLTAGE | SH_PFC_PIN_CFG_PULL_UP),	\
+	PORT_GP_CFG_24(6, fn, sfx, SH_PFC_PIN_CFG_IO_VOLTAGE_18_33 | SH_PFC_PIN_CFG_PULL_UP),	\
 	PORT_GP_CFG_1(6, 24, fn, sfx, SH_PFC_PIN_CFG_PULL_UP),		\
 	PORT_GP_CFG_1(6, 25, fn, sfx, SH_PFC_PIN_CFG_PULL_UP),		\
 	PORT_GP_CFG_1(6, 26, fn, sfx, SH_PFC_PIN_CFG_PULL_UP),		\
@@ -1803,6 +1802,7 @@ static const unsigned int adi_chsel2_b_mux[] = {
 };
 #endif /* CONFIG_PINCTRL_PFC_R8A7791 || CONFIG_PINCTRL_PFC_R8A7793 */
 
+#ifdef CONFIG_PINCTRL_PFC_FULL
 /* - Audio Clock ------------------------------------------------------------ */
 static const unsigned int audio_clk_a_pins[] = {
 	/* CLK */
@@ -1848,6 +1848,7 @@ static const unsigned int audio_clkout_pins[] = {
 static const unsigned int audio_clkout_mux[] = {
 	AUDIO_CLKOUT_MARK,
 };
+#endif
 
 /* - AVB -------------------------------------------------------------------- */
 static const unsigned int avb_link_pins[] = {
@@ -1925,6 +1926,7 @@ static const unsigned int avb_gmii_mux[] = {
 	AVB_COL_MARK,
 };
 
+#ifdef CONFIG_PINCTRL_PFC_FULL
 /* - CAN -------------------------------------------------------------------- */
 
 static const unsigned int can0_data_pins[] = {
@@ -2161,6 +2163,8 @@ static const unsigned int du1_clk_in_c_pins[] = {
 static const unsigned int du1_clk_in_c_mux[] = {
 	DU1_DOTCLKIN_C_MARK,
 };
+#endif
+
 /* - ETH -------------------------------------------------------------------- */
 static const unsigned int eth_link_pins[] = {
 	/* LINK */
@@ -2554,6 +2558,8 @@ static const unsigned int i2c8_c_pins[] = {
 static const unsigned int i2c8_c_mux[] = {
 	IIC1_SCL_C_MARK, IIC1_SDA_C_MARK,
 };
+
+#ifdef CONFIG_PINCTRL_PFC_FULL
 /* - INTC ------------------------------------------------------------------- */
 static const unsigned int intc_irq0_pins[] = {
 	/* IRQ */
@@ -2583,6 +2589,7 @@ static const unsigned int intc_irq3_pins[] = {
 static const unsigned int intc_irq3_mux[] = {
 	IRQ3_MARK,
 };
+#endif
 
 #if defined(CONFIG_PINCTRL_PFC_R8A7791) || defined(CONFIG_PINCTRL_PFC_R8A7793)
 /* - MLB+ ------------------------------------------------------------------- */
@@ -2624,6 +2631,8 @@ static const unsigned int mmc_ctrl_pins[] = {
 static const unsigned int mmc_ctrl_mux[] = {
 	MMC_CLK_MARK, MMC_CMD_MARK,
 };
+
+#ifdef CONFIG_PINCTRL_PFC_FULL
 /* - MSIOF0 ----------------------------------------------------------------- */
 static const unsigned int msiof0_clk_pins[] = {
 	/* SCK */
@@ -3193,6 +3202,8 @@ static const unsigned int pwm6_pins[] = {
 static const unsigned int pwm6_mux[] = {
 	PWM6_MARK,
 };
+#endif
+
 /* - QSPI ------------------------------------------------------------------- */
 static const unsigned int qspi_ctrl_pins[] = {
 	/* SPCLK, SSL */
@@ -3873,6 +3884,7 @@ static const unsigned int sdhi2_wp_mux[] = {
 	SD2_WP_MARK,
 };
 
+#ifdef CONFIG_PINCTRL_PFC_FULL
 /* - SSI -------------------------------------------------------------------- */
 static const unsigned int ssi0_data_pins[] = {
 	/* SDATA */
@@ -4125,6 +4137,7 @@ static const unsigned int ssi9_ctrl_b_pins[] = {
 static const unsigned int ssi9_ctrl_b_mux[] = {
 	SSI_SCK9_B_MARK, SSI_WS9_B_MARK,
 };
+#endif
 
 /* - TPU -------------------------------------------------------------------- */
 static const unsigned int tpu_to0_pins[] = {
@@ -4170,6 +4183,8 @@ static const unsigned int usb1_mux[] = {
 	USB1_PWEN_MARK,
 	USB1_OVC_MARK,
 };
+
+#ifdef CONFIG_PINCTRL_PFC_FULL
 /* - VIN0 ------------------------------------------------------------------- */
 static const unsigned int vin0_data_pins[] = {
 	/* B */
@@ -4425,6 +4440,7 @@ static const unsigned int vin2_clk_pins[] = {
 static const unsigned int vin2_clk_mux[] = {
 	VI2_CLK_MARK,
 };
+#endif
 
 static const struct {
 	struct sh_pfc_pin_group common[346];
@@ -4433,17 +4449,20 @@ static const struct {
 #endif
 } pinmux_groups = {
 	.common = {
+#ifdef CONFIG_PINCTRL_PFC_FULL
 		SH_PFC_PIN_GROUP(audio_clk_a),
 		SH_PFC_PIN_GROUP(audio_clk_b),
 		SH_PFC_PIN_GROUP(audio_clk_b_b),
 		SH_PFC_PIN_GROUP(audio_clk_c),
 		SH_PFC_PIN_GROUP(audio_clkout),
+#endif
 		SH_PFC_PIN_GROUP(avb_link),
 		SH_PFC_PIN_GROUP(avb_magic),
 		SH_PFC_PIN_GROUP(avb_phy_int),
 		SH_PFC_PIN_GROUP(avb_mdio),
 		SH_PFC_PIN_GROUP(avb_mii),
 		SH_PFC_PIN_GROUP(avb_gmii),
+#ifdef CONFIG_PINCTRL_PFC_FULL
 		SH_PFC_PIN_GROUP(can0_data),
 		SH_PFC_PIN_GROUP(can0_data_b),
 		SH_PFC_PIN_GROUP(can0_data_c),
@@ -4470,6 +4489,7 @@ static const struct {
 		SH_PFC_PIN_GROUP(du1_clk_in),
 		SH_PFC_PIN_GROUP(du1_clk_in_b),
 		SH_PFC_PIN_GROUP(du1_clk_in_c),
+#endif
 		SH_PFC_PIN_GROUP(eth_link),
 		SH_PFC_PIN_GROUP(eth_magic),
 		SH_PFC_PIN_GROUP(eth_mdio),
@@ -4525,15 +4545,18 @@ static const struct {
 		SH_PFC_PIN_GROUP(i2c8),
 		SH_PFC_PIN_GROUP(i2c8_b),
 		SH_PFC_PIN_GROUP(i2c8_c),
+#ifdef CONFIG_PINCTRL_PFC_FULL
 		SH_PFC_PIN_GROUP(intc_irq0),
 		SH_PFC_PIN_GROUP(intc_irq1),
 		SH_PFC_PIN_GROUP(intc_irq2),
 		SH_PFC_PIN_GROUP(intc_irq3),
+#endif
 		BUS_DATA_PIN_GROUP(mmc_data, 1),
 		BUS_DATA_PIN_GROUP(mmc_data, 4),
 		BUS_DATA_PIN_GROUP(mmc_data, 8),
 		BUS_DATA_PIN_GROUP(mmc_data, 8, _b),
 		SH_PFC_PIN_GROUP(mmc_ctrl),
+#ifdef CONFIG_PINCTRL_PFC_FULL
 		SH_PFC_PIN_GROUP(msiof0_clk),
 		SH_PFC_PIN_GROUP(msiof0_sync),
 		SH_PFC_PIN_GROUP(msiof0_ss1),
@@ -4615,6 +4638,7 @@ static const struct {
 		SH_PFC_PIN_GROUP(pwm5),
 		SH_PFC_PIN_GROUP(pwm5_b),
 		SH_PFC_PIN_GROUP(pwm6),
+#endif
 		SH_PFC_PIN_GROUP(qspi_ctrl),
 		BUS_DATA_PIN_GROUP(qspi_data, 2),
 		BUS_DATA_PIN_GROUP(qspi_data, 4),
@@ -4713,6 +4737,7 @@ static const struct {
 		SH_PFC_PIN_GROUP(sdhi2_ctrl),
 		SH_PFC_PIN_GROUP(sdhi2_cd),
 		SH_PFC_PIN_GROUP(sdhi2_wp),
+#ifdef CONFIG_PINCTRL_PFC_FULL
 		SH_PFC_PIN_GROUP(ssi0_data),
 		SH_PFC_PIN_GROUP(ssi0_data_b),
 		SH_PFC_PIN_GROUP(ssi0129_ctrl),
@@ -4741,12 +4766,14 @@ static const struct {
 		SH_PFC_PIN_GROUP(ssi9_data_b),
 		SH_PFC_PIN_GROUP(ssi9_ctrl),
 		SH_PFC_PIN_GROUP(ssi9_ctrl_b),
+#endif
 		SH_PFC_PIN_GROUP(tpu_to0),
 		SH_PFC_PIN_GROUP(tpu_to1),
 		SH_PFC_PIN_GROUP(tpu_to2),
 		SH_PFC_PIN_GROUP(tpu_to3),
 		SH_PFC_PIN_GROUP(usb0),
 		SH_PFC_PIN_GROUP(usb1),
+#ifdef CONFIG_PINCTRL_PFC_FULL
 		BUS_DATA_PIN_GROUP(vin0_data, 24),
 		BUS_DATA_PIN_GROUP(vin0_data, 20),
 		SH_PFC_PIN_GROUP(vin0_data18),
@@ -4779,6 +4806,7 @@ static const struct {
 		SH_PFC_PIN_GROUP(vin2_field),
 		SH_PFC_PIN_GROUP(vin2_clkenb),
 		SH_PFC_PIN_GROUP(vin2_clk),
+#endif
 	},
 #if defined(CONFIG_PINCTRL_PFC_R8A7791) || defined(CONFIG_PINCTRL_PFC_R8A7793)
 	.automotive = {
@@ -4808,6 +4836,7 @@ static const char * const adi_groups[] = {
 };
 #endif /* CONFIG_PINCTRL_PFC_R8A7791 || CONFIG_PINCTRL_PFC_R8A7793 */
 
+#ifdef CONFIG_PINCTRL_PFC_FULL
 static const char * const audio_clk_groups[] = {
 	"audio_clk_a",
 	"audio_clk_b",
@@ -4815,6 +4844,7 @@ static const char * const audio_clk_groups[] = {
 	"audio_clk_c",
 	"audio_clkout",
 };
+#endif
 
 static const char * const avb_groups[] = {
 	"avb_link",
@@ -4825,6 +4855,7 @@ static const char * const avb_groups[] = {
 	"avb_gmii",
 };
 
+#ifdef CONFIG_PINCTRL_PFC_FULL
 static const char * const can0_groups[] = {
 	"can0_data",
 	"can0_data_b",
@@ -4888,6 +4919,7 @@ static const char * const du1_groups[] = {
 	"du1_clk_in_b",
 	"du1_clk_in_c",
 };
+#endif
 
 static const char * const eth_groups[] = {
 	"eth_link",
@@ -4977,12 +5009,14 @@ static const char * const i2c8_groups[] = {
 	"i2c8_c",
 };
 
+#ifdef CONFIG_PINCTRL_PFC_FULL
 static const char * const intc_groups[] = {
 	"intc_irq0",
 	"intc_irq1",
 	"intc_irq2",
 	"intc_irq3",
 };
+#endif
 
 #if defined(CONFIG_PINCTRL_PFC_R8A7791) || defined(CONFIG_PINCTRL_PFC_R8A7793)
 static const char * const mlb_groups[] = {
@@ -4998,6 +5032,7 @@ static const char * const mmc_groups[] = {
 	"mmc_ctrl",
 };
 
+#ifdef CONFIG_PINCTRL_PFC_FULL
 static const char * const msiof0_groups[] = {
 	"msiof0_clk",
 	"msiof0_sync",
@@ -5108,6 +5143,7 @@ static const char * const pwm5_groups[] = {
 static const char * const pwm6_groups[] = {
 	"pwm6",
 };
+#endif
 
 static const char * const qspi_groups[] = {
 	"qspi_ctrl",
@@ -5255,6 +5291,7 @@ static const char * const sdhi2_groups[] = {
 	"sdhi2_wp",
 };
 
+#ifdef CONFIG_PINCTRL_PFC_FULL
 static const char * const ssi_groups[] = {
 	"ssi0_data",
 	"ssi0_data_b",
@@ -5285,6 +5322,7 @@ static const char * const ssi_groups[] = {
 	"ssi9_ctrl",
 	"ssi9_ctrl_b",
 };
+#endif
 
 static const char * const tpu_groups[] = {
 	"tpu_to0",
@@ -5300,6 +5338,7 @@ static const char * const usb1_groups[] = {
 	"usb1",
 };
 
+#ifdef CONFIG_PINCTRL_PFC_FULL
 static const char * const vin0_groups[] = {
 	"vin0_data24",
 	"vin0_data20",
@@ -5340,6 +5379,7 @@ static const char * const vin2_groups[] = {
 	"vin2_clkenb",
 	"vin2_clk",
 };
+#endif
 
 static const struct {
 	struct sh_pfc_function common[58];
@@ -5348,14 +5388,18 @@ static const struct {
 #endif
 } pinmux_functions = {
 	.common = {
+#ifdef CONFIG_PINCTRL_PFC_FULL
 		SH_PFC_FUNCTION(audio_clk),
+#endif
 		SH_PFC_FUNCTION(avb),
+#ifdef CONFIG_PINCTRL_PFC_FULL
 		SH_PFC_FUNCTION(can0),
 		SH_PFC_FUNCTION(can1),
 		SH_PFC_FUNCTION(can_clk),
 		SH_PFC_FUNCTION(du),
 		SH_PFC_FUNCTION(du0),
 		SH_PFC_FUNCTION(du1),
+#endif
 		SH_PFC_FUNCTION(eth),
 		SH_PFC_FUNCTION(hscif0),
 		SH_PFC_FUNCTION(hscif1),
@@ -5367,8 +5411,11 @@ static const struct {
 		SH_PFC_FUNCTION(i2c4),
 		SH_PFC_FUNCTION(i2c7),
 		SH_PFC_FUNCTION(i2c8),
+#ifdef CONFIG_PINCTRL_PFC_FULL
 		SH_PFC_FUNCTION(intc),
+#endif
 		SH_PFC_FUNCTION(mmc),
+#ifdef CONFIG_PINCTRL_PFC_FULL
 		SH_PFC_FUNCTION(msiof0),
 		SH_PFC_FUNCTION(msiof1),
 		SH_PFC_FUNCTION(msiof2),
@@ -5379,6 +5426,7 @@ static const struct {
 		SH_PFC_FUNCTION(pwm4),
 		SH_PFC_FUNCTION(pwm5),
 		SH_PFC_FUNCTION(pwm6),
+#endif
 		SH_PFC_FUNCTION(qspi),
 		SH_PFC_FUNCTION(scif0),
 		SH_PFC_FUNCTION(scif1),
@@ -5399,13 +5447,17 @@ static const struct {
 		SH_PFC_FUNCTION(sdhi0),
 		SH_PFC_FUNCTION(sdhi1),
 		SH_PFC_FUNCTION(sdhi2),
+#ifdef CONFIG_PINCTRL_PFC_FULL
 		SH_PFC_FUNCTION(ssi),
+#endif
 		SH_PFC_FUNCTION(tpu),
 		SH_PFC_FUNCTION(usb0),
 		SH_PFC_FUNCTION(usb1),
+#ifdef CONFIG_PINCTRL_PFC_FULL
 		SH_PFC_FUNCTION(vin0),
 		SH_PFC_FUNCTION(vin1),
 		SH_PFC_FUNCTION(vin2),
+#endif
 	},
 #if defined(CONFIG_PINCTRL_PFC_R8A7791) || defined(CONFIG_PINCTRL_PFC_R8A7793)
 	.automotive = {
@@ -6555,7 +6607,7 @@ static const struct pinmux_cfg_reg pinmux_config_regs[] = {
 		FN_SEL_SSP_0, FN_SEL_SSP_1, FN_SEL_SSP_2, 0,
 		/* RESERVED [6] */ ))
 	},
-	{ },
+	{ /* sentinel */ }
 };
 
 static int r8a7791_pin_to_pocctrl(unsigned int pin, u32 *pocctrl)
@@ -6877,7 +6929,7 @@ static const struct pinmux_bias_reg pinmux_bias_regs[] = {
 		[30] = SH_PFC_PIN_NONE,
 		[31] = SH_PFC_PIN_NONE,
 	} },
-	{ /* sentinel */ },
+	{ /* sentinel */ }
 };
 
 static const struct sh_pfc_soc_operations r8a7791_pfc_ops = {

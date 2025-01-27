@@ -23,7 +23,7 @@ config TPL_BINMAN_SYMBOLS
 config TPL_BINMAN_UBOOT_SYMBOLS
 	bool "Declare binman symbols for U-Boot phases in TPL"
 	depends on TPL_BINMAN_SYMBOLS
-	default n if ARCH_IMX8M
+	default n if ARCH_IMX8M || ARCH_IMX8ULP || ARCH_IMX9
 	default y
 	help
 	  This enables use of symbols in TPL which refer to U-Boot phases,
@@ -126,7 +126,7 @@ config TPL_POWER
 
 config TPL_TEXT_BASE
 	hex "Base address for the .text section of the TPL stage"
-	default 0
+	default 0x0
 	help
 	  The base address for the .text section of the TPL stage.
 
@@ -267,6 +267,14 @@ config TPL_RAM_DEVICE
 	  Enable booting of an image already loaded in RAM. The image has to
 	  be already in memory when TPL takes over, e.g. loaded by the boot
 	  ROM.
+
+config TPL_RELOC_LOADER
+	bool "Allow relocating the next phase"
+	help
+	  In some cases multiple U-Boot phases need to run in SRAM, typically
+	  at the same address. Enable this to support loading the next phase
+	  to temporary memory, then copying it into place afterwards, then
+	  jumping to it.
 
 config TPL_RTC
 	bool "Support RTC drivers"

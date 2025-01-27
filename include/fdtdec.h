@@ -72,7 +72,7 @@ struct bd_info;
  *	U-Boot is packaged as an ELF file, e.g. for debugging purposes
  * @FDTSRC_ENV: Provided by the fdtcontroladdr environment variable. This should
  *	be used for debugging/development only
- * @FDTSRC_NONE: No devicetree at all
+ * @FDTSRC_BLOBLIST: Provided by a bloblist from an earlier phase
  */
 enum fdt_source_t {
 	FDTSRC_SEPARATE,
@@ -80,6 +80,7 @@ enum fdt_source_t {
 	FDTSRC_BOARD,
 	FDTSRC_EMBED,
 	FDTSRC_ENV,
+	FDTSRC_BLOBLIST,
 };
 
 /*
@@ -134,23 +135,6 @@ struct fdt_pci_addr {
 	u32	phys_mid;
 	u32	phys_lo;
 };
-
-extern u8 __dtb_dt_begin[];	/* embedded device tree blob */
-extern u8 __dtb_dt_spl_begin[];	/* embedded device tree blob for SPL/TPL */
-
-/* Get a pointer to the embedded devicetree, if there is one, else NULL */
-static inline u8 *dtb_dt_embedded(void)
-{
-#ifdef CONFIG_OF_EMBED
-# ifdef CONFIG_SPL_BUILD
-	return __dtb_dt_spl_begin;
-# else
-	return __dtb_dt_begin;
-# endif
-#else
-	return NULL;
-#endif
-}
 
 /**
  * Compute the size of a resource.
@@ -1155,6 +1139,13 @@ int fdtdec_set_carveout(void *blob, const char *node, const char *prop_name,
 			unsigned int count, unsigned long flags);
 
 /**
+ * fdtdec_setup_embed - pick up embedded DTS
+ *
+ * Should be invoked under CONFIG_OF_EMBED guard.
+ */
+void fdtdec_setup_embed(void);
+
+/**
  * Set up the device tree ready for use
  */
 int fdtdec_setup(void);
@@ -1190,10 +1181,12 @@ int fdtdec_resetup(int *rescan);
  *
  * The existing devicetree is available at gd->fdt_blob
  *
- * @err internal error code if we fail to setup a DTB
- * @returns new devicetree blob pointer
+ * @fdtp: Existing devicetree blob pointer; update this and return 0 if a
+ * different devicetree should be used
+ * Return: 0 on success, -EEXIST if the existing FDT is OK, -ve error code if we
+ * fail to setup a DTB
  */
-void *board_fdt_blob_setup(int *err);
+int board_fdt_blob_setup(void **fdtp);
 
 /*
  * Decode the size of memory

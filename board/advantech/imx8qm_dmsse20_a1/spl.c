@@ -3,7 +3,7 @@
  * Copyright 2017-2018 NXP
  * Copyright 2019-2023 Kococonnector GmbH
  */
-#include <common.h>
+#include <config.h>
 #include <dm.h>
 #include <spl.h>
 #include <init.h>
@@ -14,6 +14,7 @@
 #include <firmware/imx/sci/sci.h>
 #include <asm/arch/imx8-pins.h>
 #include <asm/arch/iomux.h>
+#include <asm/sections.h>
 #include <fsl_esdhc_imx.h>
 
 DECLARE_GLOBAL_DATA_PTR;

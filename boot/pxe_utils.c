@@ -4,7 +4,9 @@
  * Copyright (c) 2014, NVIDIA CORPORATION.  All rights reserved.
  */
 
-#include <common.h>
+#define LOG_CATEGORY	LOGC_BOOT
+
+#include <bootflow.h>
 #include <command.h>
 #include <dm.h>
 #include <env.h>
@@ -21,9 +23,7 @@
 #include <errno.h>
 #include <linux/list.h>
 
-#ifdef CONFIG_DM_RNG
 #include <rng.h>
-#endif
 
 #include <splash.h>
 #include <asm/io.h>
@@ -98,7 +98,8 @@ int format_mac_pxe(char *outbuf, size_t outbuf_len)
  * Returns 1 for success, or < 0 on error
  */
 static int get_relfile(struct pxe_context *ctx, const char *file_path,
-		       unsigned long file_addr, ulong *filesizep)
+		       unsigned long file_addr, enum bootflow_img_t type,
+		       ulong *filesizep)
 {
 	size_t path_len;
 	char relfile[MAX_TFTP_PATH_LEN + 1];
@@ -125,7 +126,7 @@ static int get_relfile(struct pxe_context *ctx, const char *file_path,
 
 	sprintf(addr_buf, "%lx", file_addr);
 
-	ret = ctx->getfile(ctx, relfile, addr_buf, &size);
+	ret = ctx->getfile(ctx, relfile, addr_buf, type, &size);
 	if (ret < 0)
 		return log_msg_ret("get", ret);
 	if (filesizep)
@@ -134,16 +135,6 @@ static int get_relfile(struct pxe_context *ctx, const char *file_path,
 	return 1;
 }
 
-/**
- * get_pxe_file() - read a file
- *
- * The file is read and nul-terminated
- *
- * @ctx: PXE context
- * @file_path: File path to read (relative to the PXE file)
- * @file_addr: Address to load file to
- * Returns 1 for success, or < 0 on error
- */
 int get_pxe_file(struct pxe_context *ctx, const char *file_path,
 		 ulong file_addr)
 {
@@ -151,7 +142,8 @@ int get_pxe_file(struct pxe_context *ctx, const char *file_path,
 	int err;
 	char *buf;
 
-	err = get_relfile(ctx, file_path, file_addr, &size);
+	err = get_relfile(ctx, file_path, file_addr, BFI_EXTLINUX_CFG,
+			  &size);
 	if (err < 0)
 		return err;
 
@@ -200,13 +192,15 @@ int get_pxelinux_path(struct pxe_context *ctx, const char *file,
  * @file_path: File path to read (relative to the PXE file)
  * @envaddr_name: Name of environment variable which contains the address to
  *	load to
+ * @type: File type
  * @filesizep: Returns the file size in bytes
  * Returns 1 on success, -ENOENT if @envaddr_name does not exist as an
  *	environment variable, -EINVAL if its format is not valid hex, or other
  *	value < 0 on other error
  */
 static int get_relfile_envaddr(struct pxe_context *ctx, const char *file_path,
-			       const char *envaddr_name, ulong *filesizep)
+			       const char *envaddr_name,
+			       enum bootflow_img_t type, ulong *filesizep)
 {
 	unsigned long file_addr;
 	char *envaddr;
@@ -218,7 +212,7 @@ static int get_relfile_envaddr(struct pxe_context *ctx, const char *file_path,
 	if (strict_strtoul(envaddr, 16, &file_addr) < 0)
 		return -EINVAL;
 
-	return get_relfile(ctx, file_path, file_addr, filesizep);
+	return get_relfile(ctx, file_path, file_addr, type, filesizep);
 }
 
 /**
@@ -323,13 +317,9 @@ static int label_localboot(struct pxe_label *label)
 
 static void label_boot_kaslrseed(void)
 {
-#ifdef CONFIG_DM_RNG
+#if CONFIG_IS_ENABLED(DM_RNG)
 	ulong fdt_addr;
 	struct fdt_header *working_fdt;
-	size_t n = 0x8;
-	struct udevice *dev;
-	u64 *buf;
-	int nodeoffset;
 	int err;
 
 	/* Get the main fdt and map it */
@@ -345,35 +335,7 @@ static void label_boot_kaslrseed(void)
 	if (err <= 0)
 		return;
 
-	if (uclass_get_device(UCLASS_RNG, 0, &dev) || !dev) {
-		printf("No RNG device\n");
-		return;
-	}
-
-	nodeoffset = fdt_find_or_add_subnode(working_fdt, 0, "chosen");
-	if (nodeoffset < 0) {
-		printf("Reading chosen node failed\n");
-		return;
-	}
-
-	buf = malloc(n);
-	if (!buf) {
-		printf("Out of memory\n");
-		return;
-	}
-
-	if (dm_rng_read(dev, buf, n)) {
-		printf("Reading RNG failed\n");
-		goto err;
-	}
-
-	err = fdt_setprop(working_fdt, nodeoffset, "kaslr-seed", buf, sizeof(buf));
-	if (err < 0) {
-		printf("Unable to set kaslr-seed on chosen node: %s\n", fdt_strerror(err));
-		goto err;
-	}
-err:
-	free(buf);
+	fdt_kaslrseed(working_fdt, true);
 #endif
 	return;
 }
@@ -438,6 +400,7 @@ static void label_boot_fdtoverlay(struct pxe_context *ctx,
 
 		/* Load overlay file */
 		err = get_relfile_envaddr(ctx, overlayfile, "fdtoverlay_addr_r",
+					  (enum bootflow_img_t)IH_TYPE_FLATDT,
 					  NULL);
 		if (err < 0) {
 			printf("Failed loading overlay %s\n", overlayfile);
@@ -523,7 +486,8 @@ static int label_boot(struct pxe_context *ctx, struct pxe_label *label)
 	}
 
 	if (get_relfile_envaddr(ctx, label->kernel, "kernel_addr_r",
-				NULL) < 0) {
+				(enum bootflow_img_t)IH_TYPE_KERNEL, NULL)
+				< 0) {
 		printf("Skipping %s for failure retrieving kernel\n",
 		       label->name);
 		return 1;
@@ -549,12 +513,13 @@ static int label_boot(struct pxe_context *ctx, struct pxe_label *label)
 	} else if (label->initrd) {
 		ulong size;
 		if (get_relfile_envaddr(ctx, label->initrd, "ramdisk_addr_r",
+					(enum bootflow_img_t)IH_TYPE_RAMDISK,
 					&size) < 0) {
 			printf("Skipping %s for failure retrieving initrd\n",
 			       label->name);
 			goto cleanup;
 		}
-
+		strcpy(initrd_filesize, simple_xtoa(size));
 		initrd_addr_str = env_get("ramdisk_addr_r");
 		size = snprintf(initrd_str, sizeof(initrd_str), "%s:%lx",
 				initrd_addr_str, size);
@@ -634,7 +599,12 @@ static int label_boot(struct pxe_context *ctx, struct pxe_label *label)
 		char *fdtfilefree = NULL;
 
 		if (label->fdt) {
-			fdtfile = label->fdt;
+			if (IS_ENABLED(CONFIG_SUPPORT_PASSING_ATAGS)) {
+				if (strcmp("-", label->fdt))
+					fdtfile = label->fdt;
+			} else {
+				fdtfile = label->fdt;
+			}
 		} else if (label->fdtdir) {
 			char *f1, *f2, *f3, *f4, *slash;
 
@@ -689,7 +659,8 @@ static int label_boot(struct pxe_context *ctx, struct pxe_label *label)
 
 		if (fdtfile) {
 			int err = get_relfile_envaddr(ctx, fdtfile,
-						      "fdt_addr_r", NULL);
+				"fdt_addr_r",
+				 (enum bootflow_img_t)IH_TYPE_FLATDT, NULL);
 
 			free(fdtfilefree);
 			if (err < 0) {
@@ -700,10 +671,15 @@ static int label_boot(struct pxe_context *ctx, struct pxe_label *label)
 					       label->name);
 					goto cleanup;
 				}
+
+				if (label->fdtdir) {
+					printf("Skipping fdtdir %s for failure retrieving dts\n",
+						label->fdtdir);
+				}
 			}
 
-		if (label->kaslrseed)
-			label_boot_kaslrseed();
+			if (label->kaslrseed)
+				label_boot_kaslrseed();
 
 #ifdef CONFIG_OF_LIBFDT_OVERLAY
 			if (label->fdtoverlays)
@@ -726,14 +702,26 @@ static int label_boot(struct pxe_context *ctx, struct pxe_label *label)
 		zboot_argc = 5;
 	}
 
-	if (!bootm_argv[3])
-		bootm_argv[3] = env_get("fdt_addr");
+	if (!bootm_argv[3]) {
+		if (IS_ENABLED(CONFIG_SUPPORT_PASSING_ATAGS)) {
+			if (strcmp("-", label->fdt))
+				bootm_argv[3] = env_get("fdt_addr");
+		} else {
+			bootm_argv[3] = env_get("fdt_addr");
+		}
+	}
 
 	kernel_addr_r = genimg_get_kernel_addr(kernel_addr);
 	buf = map_sysmem(kernel_addr_r, 0);
 
-	if (!bootm_argv[3] && genimg_get_format(buf) != IMAGE_FORMAT_FIT)
-		bootm_argv[3] = env_get("fdtcontroladdr");
+	if (!bootm_argv[3] && genimg_get_format(buf) != IMAGE_FORMAT_FIT) {
+		if (IS_ENABLED(CONFIG_SUPPORT_PASSING_ATAGS)) {
+			if (strcmp("-", label->fdt))
+				bootm_argv[3] = env_get("fdtcontroladdr");
+		} else {
+			bootm_argv[3] = env_get("fdtcontroladdr");
+		}
+	}
 
 	if (bootm_argv[3]) {
 		if (!bootm_argv[2])
@@ -743,17 +731,22 @@ static int label_boot(struct pxe_context *ctx, struct pxe_label *label)
 
 	/* Try bootm for legacy and FIT format image */
 	if (genimg_get_format(buf) != IMAGE_FORMAT_INVALID &&
-            IS_ENABLED(CONFIG_CMD_BOOTM))
+	    IS_ENABLED(CONFIG_CMD_BOOTM)) {
+		log_debug("using bootm\n");
 		do_bootm(ctx->cmdtp, 0, bootm_argc, bootm_argv);
 	/* Try booting an AArch64 Linux kernel image */
-	else if (IS_ENABLED(CONFIG_CMD_BOOTI))
+	} else if (IS_ENABLED(CONFIG_CMD_BOOTI)) {
+		log_debug("using booti\n");
 		do_booti(ctx->cmdtp, 0, bootm_argc, bootm_argv);
 	/* Try booting a Image */
-	else if (IS_ENABLED(CONFIG_CMD_BOOTZ))
+	} else if (IS_ENABLED(CONFIG_CMD_BOOTZ)) {
+		log_debug("using bootz\n");
 		do_bootz(ctx->cmdtp, 0, bootm_argc, bootm_argv);
 	/* Try booting an x86_64 Linux kernel image */
-	else if (IS_ENABLED(CONFIG_CMD_ZBOOT))
+	} else if (IS_ENABLED(CONFIG_CMD_ZBOOT)) {
+		log_debug("using zboot\n");
 		do_zboot_parent(ctx->cmdtp, 0, zboot_argc, zboot_argv, NULL);
+	}
 
 	unmap_sysmem(buf);
 
@@ -787,6 +780,7 @@ enum token_type {
 	T_IPAPPEND,
 	T_BACKGROUND,
 	T_KASLRSEED,
+	T_FALLBACK,
 	T_INVALID
 };
 
@@ -820,6 +814,7 @@ static const struct token keywords[] = {
 	{"ipappend", T_IPAPPEND,},
 	{"background", T_BACKGROUND,},
 	{"kaslrseed", T_KASLRSEED,},
+	{"fallback", T_FALLBACK,},
 	{NULL, T_INVALID}
 };
 
@@ -1362,6 +1357,18 @@ static int parse_pxefile_top(struct pxe_context *ctx, char *p, unsigned long bas
 
 			break;
 
+		case T_FALLBACK:
+			err = parse_sliteral(&p, &label_name);
+
+			if (label_name) {
+				if (cfg->fallback_label)
+					free(cfg->fallback_label);
+
+				cfg->fallback_label = label_name;
+			}
+
+			break;
+
 		case T_INCLUDE:
 			err = handle_include(ctx, &p,
 					     base + ALIGN(strlen(b), 4), cfg,
@@ -1401,6 +1408,7 @@ void destroy_pxe_menu(struct pxe_menu *cfg)
 
 	free(cfg->title);
 	free(cfg->default_label);
+	free(cfg->fallback_label);
 
 	list_for_each_safe(pos, n, &cfg->labels) {
 		label = list_entry(pos, struct pxe_label, list);
@@ -1427,6 +1435,16 @@ struct pxe_menu *parse_pxefile(struct pxe_context *ctx, unsigned long menucfg)
 
 	buf = map_sysmem(menucfg, 0);
 	r = parse_pxefile_top(ctx, buf, menucfg, cfg, 1);
+
+	if (ctx->use_fallback) {
+		if (cfg->fallback_label) {
+			printf("Setting use of fallback\n");
+			cfg->default_label = cfg->fallback_label;
+		} else {
+			printf("Selected fallback option, but not set\n");
+		}
+	}
+
 	unmap_sysmem(buf);
 	if (r < 0) {
 		destroy_pxe_menu(cfg);
@@ -1455,7 +1473,7 @@ static struct menu *pxe_menu_to_menu(struct pxe_menu *cfg)
 	 * Create a menu and add items for all the labels.
 	 */
 	m = menu_create(cfg->title, DIV_ROUND_UP(cfg->timeout, 10),
-			cfg->prompt, NULL, label_print, NULL, NULL);
+			cfg->prompt, NULL, label_print, NULL, NULL, NULL);
 	if (!m)
 		return NULL;
 
@@ -1475,7 +1493,6 @@ static struct menu *pxe_menu_to_menu(struct pxe_menu *cfg)
 		if (label_override && !strcmp(label->name, label_override))
 			override_num = label->num;
 	}
-
 
 	if (label_override) {
 		if (override_num)
@@ -1530,7 +1547,8 @@ void handle_pxe_menu(struct pxe_context *ctx, struct pxe_menu *cfg)
 	if (IS_ENABLED(CONFIG_CMD_BMP)) {
 		/* display BMP if available */
 		if (cfg->bmp) {
-			if (get_relfile(ctx, cfg->bmp, image_load_addr, NULL)) {
+			if (get_relfile(ctx, cfg->bmp, image_load_addr,
+					BFI_LOGO, NULL)) {
 #if defined(CONFIG_VIDEO)
 				struct udevice *dev;
 
@@ -1578,7 +1596,8 @@ void handle_pxe_menu(struct pxe_context *ctx, struct pxe_menu *cfg)
 
 int pxe_setup_ctx(struct pxe_context *ctx, struct cmd_tbl *cmdtp,
 		  pxe_getfile_func getfile, void *userdata,
-		  bool allow_abs_path, const char *bootfile, bool use_ipv6)
+		  bool allow_abs_path, const char *bootfile, bool use_ipv6,
+		  bool use_fallback)
 {
 	const char *last_slash;
 	size_t path_len = 0;
@@ -1589,6 +1608,7 @@ int pxe_setup_ctx(struct pxe_context *ctx, struct cmd_tbl *cmdtp,
 	ctx->userdata = userdata;
 	ctx->allow_abs_path = allow_abs_path;
 	ctx->use_ipv6 = use_ipv6;
+	ctx->use_fallback = use_fallback;
 
 	/* figure out the boot directory, if there is one */
 	if (bootfile && strlen(bootfile) >= MAX_TFTP_PATH_LEN)

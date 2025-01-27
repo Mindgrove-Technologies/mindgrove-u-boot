@@ -9,7 +9,7 @@
  * Marius Groeger <mgroeger@sysgo.de>
  */
 
-#include <common.h>
+#include <config.h>
 #include <bloblist.h>
 #include <bootstage.h>
 #include <clock_legacy.h>
@@ -40,6 +40,7 @@
 #include <sysreset.h>
 #include <timer.h>
 #include <trace.h>
+#include <upl.h>
 #include <video.h>
 #include <watchdog.h>
 #include <asm/cache.h>
@@ -124,8 +125,8 @@ static int display_text_info(void)
 #if !defined(CONFIG_SANDBOX) && !defined(CONFIG_EFI_APP)
 	ulong bss_start, bss_end, text_base;
 
-	bss_start = (ulong)&__bss_start;
-	bss_end = (ulong)&__bss_end;
+	bss_start = (ulong)__bss_start;
+	bss_end = (ulong)__bss_end;
 
 #ifdef CONFIG_TEXT_BASE
 	text_base = CONFIG_TEXT_BASE;
@@ -148,11 +149,12 @@ static int print_resetinfo(void)
 	bool status_printed = false;
 	int ret;
 
-	/* Not all boards have sysreset drivers available during early
+	/*
+	 * Not all boards have sysreset drivers available during early
 	 * boot, so don't fail if one can't be found.
 	 */
 	for (ret = uclass_first_device_check(UCLASS_SYSRESET, &dev); dev;
-			ret = uclass_next_device_check(&dev)) {
+	     ret = uclass_next_device_check(&dev)) {
 		if (ret) {
 			debug("%s: %s sysreset device (error: %d)\n",
 			      __func__, dev->name, ret);
@@ -279,31 +281,26 @@ static int init_func_i2c(void)
 }
 #endif
 
-#if defined(CONFIG_VID)
-__weak int init_func_vid(void)
-{
-	return 0;
-}
-#endif
-
 static int setup_mon_len(void)
 {
-#if defined(__ARM__) || defined(__MICROBLAZE__)
-	gd->mon_len = (ulong)&__bss_end - (ulong)_start;
+#if defined(CONFIG_ARCH_NEXELL)
+	gd->mon_len = (ulong)__bss_end - (ulong)__image_copy_start;
+#elif defined(__ARM__) || defined(__MICROBLAZE__)
+	gd->mon_len = (ulong)__bss_end - (ulong)_start;
 #elif defined(CONFIG_SANDBOX) && !defined(__riscv)
-	gd->mon_len = (ulong)&_end - (ulong)_init;
+	gd->mon_len = (ulong)_end - (ulong)_init;
 #elif defined(CONFIG_SANDBOX)
 	/* gcc does not provide _init in crti.o on RISC-V */
 	gd->mon_len = 0;
 #elif defined(CONFIG_EFI_APP)
-	gd->mon_len = (ulong)&_end - (ulong)_init;
+	gd->mon_len = (ulong)_end - (ulong)_init;
 #elif defined(CONFIG_NIOS2) || defined(CONFIG_XTENSA)
 	gd->mon_len = CONFIG_SYS_MONITOR_LEN;
 #elif defined(CONFIG_SH) || defined(CONFIG_RISCV)
-	gd->mon_len = (ulong)(&__bss_end) - (ulong)(&_start);
+	gd->mon_len = (ulong)(__bss_end) - (ulong)(_start);
 #elif defined(CONFIG_SYS_MONITOR_BASE)
-	/* TODO: use (ulong)&__bss_end - (ulong)&__text_start; ? */
-	gd->mon_len = (ulong)&__bss_end - CONFIG_SYS_MONITOR_BASE;
+	/* TODO: use (ulong)__bss_end - (ulong)__text_start; ? */
+	gd->mon_len = (ulong)__bss_end - CONFIG_SYS_MONITOR_BASE;
 #endif
 	return 0;
 }
@@ -330,7 +327,7 @@ __weak int mach_cpu_init(void)
 }
 
 /* Get the top of usable RAM */
-__weak phys_size_t board_get_usable_ram_top(phys_size_t total_size)
+__weak phys_addr_t board_get_usable_ram_top(phys_size_t total_size)
 {
 #if defined(CFG_SYS_SDRAM_BASE) && CFG_SYS_SDRAM_BASE > 0
 	/*
@@ -354,7 +351,7 @@ __weak int arch_setup_dest_addr(void)
 
 static int setup_dest_addr(void)
 {
-	debug("Monitor len: %08lX\n", gd->mon_len);
+	debug("Monitor len: %08x\n", gd->mon_len);
 	/*
 	 * Ram is setup, size stored in gd !!
 	 */
@@ -409,18 +406,47 @@ __weak int arch_reserve_mmu(void)
 	return 0;
 }
 
-static int reserve_video(void)
+static int reserve_video_from_videoblob(void)
 {
-	if (IS_ENABLED(CONFIG_SPL_VIDEO) && spl_phase() > PHASE_SPL &&
-	    CONFIG_IS_ENABLED(BLOBLIST)) {
+	if (IS_ENABLED(CONFIG_SPL_VIDEO_HANDOFF) && xpl_phase() > PHASE_SPL) {
 		struct video_handoff *ho;
+		int ret = 0;
 
 		ho = bloblist_find(BLOBLISTT_U_BOOT_VIDEO, sizeof(*ho));
 		if (!ho)
-			return log_msg_ret("blf", -ENOENT);
-		video_reserve_from_bloblist(ho);
-		gd->relocaddr = ho->fb;
-	} else if (CONFIG_IS_ENABLED(VIDEO)) {
+			return log_msg_ret("Missing video bloblist", -ENOENT);
+
+		ret = video_reserve_from_bloblist(ho);
+		if (ret)
+			return log_msg_ret("Invalid Video handoff info", ret);
+
+		/* Sanity check fb from blob is before current relocaddr */
+		if (likely(gd->relocaddr > (unsigned long)ho->fb))
+			gd->relocaddr = ho->fb;
+	}
+
+	return 0;
+}
+
+/*
+ * Check if any bloblist received specifying reserved areas from previous stage and adjust
+ * gd->relocaddr accordingly, so that we start reserving after pre-reserved areas
+ * from previous stage.
+ *
+ * NOTE:
+ * IT is recommended that all bloblists from previous stage are reserved from ram_top
+ * as next stage will simply start reserving further regions after them.
+ */
+static int setup_relocaddr_from_bloblist(void)
+{
+	reserve_video_from_videoblob();
+
+	return 0;
+}
+
+static int reserve_video(void)
+{
+	if (CONFIG_IS_ENABLED(VIDEO)) {
 		ulong addr;
 		int ret;
 
@@ -462,7 +488,7 @@ static int reserve_uboot(void)
 		gd->relocaddr &= ~(65536 - 1);
 	#endif
 
-		debug("Reserving %ldk for U-Boot at: %08lx\n",
+		debug("Reserving %dk for U-Boot at: %08lx\n",
 		      gd->mon_len >> 10, gd->relocaddr);
 	}
 
@@ -486,9 +512,9 @@ static unsigned long reserve_stack_aligned(size_t size)
 static int reserve_noncached(void)
 {
 	/*
-	 * The value of gd->start_addr_sp must match the value of malloc_start
-	 * calculated in board_r.c:initr_malloc(), which is passed to
-	 * dlmalloc.c:mem_malloc_init() and then used by
+	 * The value of gd->start_addr_sp must match the value of
+	 * mem_malloc_start calculated in board_r.c:initr_malloc(), which is
+	 * passed to dlmalloc.c:mem_malloc_init() and then used by
 	 * cache.c:noncached_init()
 	 *
 	 * These calculations must match the code in cache.c:noncached_init()
@@ -549,12 +575,15 @@ static int reserve_fdt(void)
 		 * section, then it will be relocated with other data.
 		 */
 		if (gd->fdt_blob) {
-			gd->fdt_size = ALIGN(fdt_totalsize(gd->fdt_blob), 32);
+			gd->boardf->fdt_size =
+				ALIGN(fdt_totalsize(gd->fdt_blob), 32);
 
-			gd->start_addr_sp = reserve_stack_aligned(gd->fdt_size);
-			gd->new_fdt = map_sysmem(gd->start_addr_sp, gd->fdt_size);
+			gd->start_addr_sp = reserve_stack_aligned(
+				gd->boardf->fdt_size);
+			gd->boardf->new_fdt = map_sysmem(gd->start_addr_sp,
+							 gd->boardf->fdt_size);
 			debug("Reserving %lu Bytes for FDT at: %08lx\n",
-			      gd->fdt_size, gd->start_addr_sp);
+			      gd->boardf->fdt_size, gd->start_addr_sp);
 		}
 	}
 
@@ -564,10 +593,10 @@ static int reserve_fdt(void)
 static int reserve_bootstage(void)
 {
 #ifdef CONFIG_BOOTSTAGE
-	int size = bootstage_get_size();
+	int size = bootstage_get_size(true);
 
 	gd->start_addr_sp = reserve_stack_aligned(size);
-	gd->new_bootstage = map_sysmem(gd->start_addr_sp, size);
+	gd->boardf->new_bootstage = map_sysmem(gd->start_addr_sp, size);
 	debug("Reserving %#x Bytes for bootstage at: %08lx\n", size,
 	      gd->start_addr_sp);
 #endif
@@ -598,8 +627,8 @@ static int reserve_bloblist(void)
 	/* Align to a 4KB boundary for easier reading of addresses */
 	gd->start_addr_sp = ALIGN_DOWN(gd->start_addr_sp -
 				       CONFIG_BLOBLIST_SIZE_RELOC, 0x1000);
-	gd->new_bloblist = map_sysmem(gd->start_addr_sp,
-				      CONFIG_BLOBLIST_SIZE_RELOC);
+	gd->boardf->new_bloblist = map_sysmem(gd->start_addr_sp,
+					      CONFIG_BLOBLIST_SIZE_RELOC);
 #endif
 
 	return 0;
@@ -619,13 +648,6 @@ __weak int arch_setup_bdinfo(void)
 
 int setup_bdinfo(void)
 {
-	struct bd_info *bd = gd->bd;
-
-	if (IS_ENABLED(CONFIG_SYS_HAS_SRAM)) {
-		bd->bi_sramstart = CONFIG_SYS_SRAM_BASE; /* start of SRAM */
-		bd->bi_sramsize = CONFIG_SYS_SRAM_SIZE;  /* size  of SRAM */
-	}
-
 	return arch_setup_bdinfo();
 }
 
@@ -642,10 +664,10 @@ static int init_post(void)
 static int reloc_fdt(void)
 {
 	if (!IS_ENABLED(CONFIG_OF_EMBED)) {
-		if (gd->new_fdt) {
-			memcpy(gd->new_fdt, gd->fdt_blob,
+		if (gd->boardf->new_fdt) {
+			memcpy(gd->boardf->new_fdt, gd->fdt_blob,
 			       fdt_totalsize(gd->fdt_blob));
-			gd->fdt_blob = gd->new_fdt;
+			gd->fdt_blob = gd->boardf->new_fdt;
 		}
 	}
 
@@ -657,15 +679,8 @@ static int reloc_bootstage(void)
 #ifdef CONFIG_BOOTSTAGE
 	if (gd->flags & GD_FLG_SKIP_RELOC)
 		return 0;
-	if (gd->new_bootstage) {
-		int size = bootstage_get_size();
-
-		debug("Copying bootstage from %p to %p, size %x\n",
-		      gd->bootstage, gd->new_bootstage, size);
-		memcpy(gd->new_bootstage, gd->bootstage, size);
-		gd->bootstage = gd->new_bootstage;
-		bootstage_relocate();
-	}
+	if (gd->boardf->new_bootstage)
+		bootstage_relocate(gd->boardf->new_bootstage);
 #endif
 
 	return 0;
@@ -682,20 +697,19 @@ static int reloc_bloblist(void)
 		debug("Not relocating bloblist\n");
 		return 0;
 	}
-	if (gd->new_bloblist) {
-		int size = CONFIG_BLOBLIST_SIZE;
-
+	if (gd->boardf->new_bloblist) {
 		debug("Copying bloblist from %p to %p, size %x\n",
-		      gd->bloblist, gd->new_bloblist, size);
-		bloblist_reloc(gd->new_bloblist, CONFIG_BLOBLIST_SIZE_RELOC,
-			       gd->bloblist, size);
-		gd->bloblist = gd->new_bloblist;
+		      gd->bloblist, gd->boardf->new_bloblist,
+	gd->bloblist->total_size);
+		return bloblist_reloc(gd->boardf->new_bloblist,
+				      CONFIG_BLOBLIST_SIZE_RELOC);
 	}
 #endif
 
 	return 0;
 }
 
+void mcheck_on_ramrelocation(size_t offset);
 static int setup_reloc(void)
 {
 	if (!(gd->flags & GD_FLG_SKIP_RELOC)) {
@@ -721,6 +735,9 @@ static int setup_reloc(void)
 	if (gd->flags & GD_FLG_SKIP_RELOC) {
 		debug("Skipping relocation due to flag\n");
 	} else {
+#ifdef MCHECK_HEAP_PROTECTION
+		mcheck_on_ramrelocation(gd->reloc_off);
+#endif
 		debug("Relocation Offset is: %08lx\n", gd->reloc_off);
 		debug("Relocating to %08lx, new gd at %08lx, sp at %08lx\n",
 		      gd->relocaddr, (ulong)map_to_sysmem(gd->new_gd),
@@ -784,10 +801,7 @@ static int initf_bootstage(void)
 	if (ret)
 		return ret;
 	if (from_spl) {
-		const void *stash = map_sysmem(CONFIG_BOOTSTAGE_STASH_ADDR,
-					       CONFIG_BOOTSTAGE_STASH_SIZE);
-
-		ret = bootstage_unstash(stash, CONFIG_BOOTSTAGE_STASH_SIZE);
+		ret = bootstage_unstash_default();
 		if (ret && ret != -ENOENT) {
 			debug("Failed to unstash bootstage: err=%d\n", ret);
 			return ret;
@@ -801,12 +815,18 @@ static int initf_bootstage(void)
 
 static int initf_dm(void)
 {
-#if defined(CONFIG_DM) && CONFIG_VAL(SYS_MALLOC_F_LEN)
 	int ret;
+
+	if (!CONFIG_IS_ENABLED(SYS_MALLOC_F))
+		return 0;
 
 	bootstage_start(BOOTSTAGE_ID_ACCUM_DM_F, "dm_f");
 	ret = dm_init_and_scan(true);
 	bootstage_accum(BOOTSTAGE_ID_ACCUM_DM_F);
+	if (ret)
+		return ret;
+
+	ret = dm_autoprobe();
 	if (ret)
 		return ret;
 
@@ -815,7 +835,6 @@ static int initf_dm(void)
 		if (ret)
 			return ret;
 	}
-#endif
 
 	return 0;
 }
@@ -836,9 +855,24 @@ __weak int clear_bss(void)
 	return 0;
 }
 
-static int misc_init_f(void)
+static int initf_upl(void)
 {
-	return event_notify_null(EVT_MISC_INIT_F);
+	struct upl *upl;
+	int ret;
+
+	if (!IS_ENABLED(CONFIG_UPL_IN) || !(gd->flags & GD_FLG_UPL))
+		return 0;
+
+	upl = malloc(sizeof(struct upl));
+	if (upl)
+		ret = upl_read_handoff(upl, oftree_default());
+	if (ret) {
+		printf("UPL handoff: read failure (err=%dE)\n", ret);
+		return ret;
+	}
+	gd_set_upl(upl);
+
+	return 0;
 }
 
 static const init_fnc_t init_sequence_f[] = {
@@ -850,19 +884,16 @@ static const init_fnc_t init_sequence_f[] = {
 	trace_early_init,
 #endif
 	initf_malloc,
+	initf_upl,
 	log_init,
 	initf_bootstage,	/* uses its own timer, so does not need DM */
 	event_init,
-#ifdef CONFIG_BLOBLIST
-	bloblist_init,
-#endif
+	bloblist_maybe_init,
 	setup_spl_handoff,
 #if defined(CONFIG_CONSOLE_RECORD_INIT_F)
 	console_record_init,
 #endif
-#if defined(CONFIG_HAVE_FSP)
-	arch_fsp_init,
-#endif
+	INITCALL_EVENT(EVT_FSP_INIT_F),
 	arch_cpu_init,		/* basic arch cpu dependent setup */
 	mach_cpu_init,		/* SoC/machine dependent CPU setup */
 	initf_dm,
@@ -899,13 +930,10 @@ static const init_fnc_t init_sequence_f[] = {
 	show_board_info,
 #endif
 	INIT_FUNC_WATCHDOG_INIT
-	misc_init_f,
+	INITCALL_EVENT(EVT_MISC_INIT_F),
 	INIT_FUNC_WATCHDOG_RESET
 #if CONFIG_IS_ENABLED(SYS_I2C_LEGACY)
 	init_func_i2c,
-#endif
-#if defined(CONFIG_VID) && !defined(CONFIG_SPL)
-	init_func_vid,
 #endif
 	announce_dram_init,
 	dram_init,		/* configure available RAM banks */
@@ -935,13 +963,14 @@ static const init_fnc_t init_sequence_f[] = {
 	 *  - board info struct
 	 */
 	setup_dest_addr,
-#ifdef CONFIG_OF_BOARD_FIXUP
+#if defined(CONFIG_OF_BOARD_FIXUP) && !defined(CONFIG_OF_INITIAL_DTB_READONLY)
 	fix_fdt,
 #endif
 #ifdef CFG_PRAM
 	reserve_pram,
 #endif
 	reserve_round_4k,
+	setup_relocaddr_from_bloblist,
 	arch_reserve_mmu,
 	reserve_video,
 	reserve_trace,
@@ -950,6 +979,10 @@ static const init_fnc_t init_sequence_f[] = {
 	reserve_board,
 	reserve_global_data,
 	reserve_fdt,
+#if defined(CONFIG_OF_BOARD_FIXUP) && defined(CONFIG_OF_INITIAL_DTB_READONLY)
+	reloc_fdt,
+	fix_fdt,
+#endif
 	reserve_bootstage,
 	reserve_bloblist,
 	reserve_arch,
@@ -960,7 +993,9 @@ static const init_fnc_t init_sequence_f[] = {
 	setup_bdinfo,
 	display_new_sp,
 	INIT_FUNC_WATCHDOG_RESET
+#if !defined(CONFIG_OF_BOARD_FIXUP) || !defined(CONFIG_OF_INITIAL_DTB_READONLY)
 	reloc_fdt,
+#endif
 	reloc_bootstage,
 	reloc_bloblist,
 	setup_reloc,
@@ -987,8 +1022,11 @@ static const init_fnc_t init_sequence_f[] = {
 
 void board_init_f(ulong boot_flags)
 {
+	struct board_f boardf;
+
 	gd->flags = boot_flags;
-	gd->have_console = 0;
+	gd->flags &= ~GD_FLG_HAVE_CONSOLE;
+	gd->boardf = &boardf;
 
 	if (initcall_run_list(init_sequence_f))
 		hang();

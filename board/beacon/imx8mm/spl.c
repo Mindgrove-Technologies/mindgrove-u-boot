@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0+
 
-#include <common.h>
 #include <cpu_func.h>
 #include <hang.h>
 #include <init.h>
@@ -14,6 +13,7 @@
 #include <asm/arch/sys_proto.h>
 #include <asm/mach-imx/boot_mode.h>
 #include <asm/arch/ddr.h>
+#include <asm/sections.h>
 
 #include <dm/uclass.h>
 #include <dm/device.h>

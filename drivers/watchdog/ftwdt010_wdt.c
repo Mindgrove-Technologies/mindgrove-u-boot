@@ -14,7 +14,6 @@
  * 22/08/2022 Port to DM
  */
 
-#include <common.h>
 #include <dm.h>
 #include <wdt.h>
 #include <log.h>
@@ -25,8 +24,27 @@ struct ftwdt010_wdt_priv {
 	struct ftwdt010_wdt __iomem *regs;
 };
 
+static int ftwdt010_wdt_reset(struct udevice *dev)
+{
+	struct ftwdt010_wdt_priv *priv = dev_get_priv(dev);
+	struct ftwdt010_wdt *wd = priv->regs;
+
+	debug("Reset WDT..\n");
+
+	/* clear control register */
+	writel(0, &wd->wdcr);
+
+	/* Write Magic number */
+	writel(FTWDT010_WDRESTART_MAGIC, &wd->wdrestart);
+
+	/* Enable WDT */
+	writel(FTWDT010_WDCR_RST | FTWDT010_WDCR_ENABLE, &wd->wdcr);
+
+	return 0;
+}
+
 /*
- * Set the watchdog time interval.
+ * Set the watchdog time interval and start the timer.
  * Counter is 32 bit.
  */
 static int ftwdt010_wdt_start(struct udevice *dev, u64 timeout_ms, ulong flags)
@@ -52,24 +70,7 @@ static int ftwdt010_wdt_start(struct udevice *dev, u64 timeout_ms, ulong flags)
 
 	writel(reg, &wd->wdload);
 
-	return 0;
-}
-
-static int ftwdt010_wdt_reset(struct udevice *dev)
-{
-	struct ftwdt010_wdt_priv *priv = dev_get_priv(dev);
-	struct ftwdt010_wdt *wd = priv->regs;
-
-	/* clear control register */
-	writel(0, &wd->wdcr);
-
-	/* Write Magic number */
-	writel(FTWDT010_WDRESTART_MAGIC, &wd->wdrestart);
-
-	/* Enable WDT */
-	writel((FTWDT010_WDCR_RST | FTWDT010_WDCR_ENABLE), &wd->wdcr);
-
-	return 0;
+	return ftwdt010_wdt_reset(dev);
 }
 
 static int ftwdt010_wdt_stop(struct udevice *dev)

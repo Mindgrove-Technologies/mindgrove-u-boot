@@ -1,7 +1,7 @@
 /*
  * am335x_evm.h
  *
- * Copyright (C) 2011 Texas Instruments Incorporated - http://www.ti.com/
+ * Copyright (C) 2011 Texas Instruments Incorporated - https://www.ti.com/
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -75,8 +75,8 @@
 
 #include <config_distro_bootcmd.h>
 
-#ifndef CONFIG_SPL_BUILD
-#include <environment/ti/dfu.h>
+#ifndef CONFIG_XPL_BUILD
+#include <env/ti/dfu.h>
 
 #define CFG_EXTRA_ENV_SETTINGS \
 	DEFAULT_LINUX_BOOT_ENV \
@@ -181,7 +181,7 @@
 #endif /* !CONFIG_MTD_RAW_NAND */
 
 /* USB Device Firmware Update support */
-#ifndef CONFIG_SPL_BUILD
+#ifndef CONFIG_XPL_BUILD
 #define DFUARGS \
 	DFU_ALT_INFO_EMMC \
 	DFU_ALT_INFO_MMC \

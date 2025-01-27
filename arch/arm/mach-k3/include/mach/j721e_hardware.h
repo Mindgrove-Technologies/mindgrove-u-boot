@@ -2,12 +2,11 @@
 /*
  * K3: J721E SoC definitions, structures etc.
  *
- * (C) Copyright (C) 2018-2019 Texas Instruments Incorporated - http://www.ti.com/
+ * (C) Copyright (C) 2018-2019 Texas Instruments Incorporated - https://www.ti.com/
  */
 #ifndef __ASM_ARCH_J721E_HARDWARE_H
 #define __ASM_ARCH_J721E_HARDWARE_H
 
-#include <config.h>
 #ifndef __ASSEMBLY__
 #include <linux/bitops.h>
 #endif
@@ -29,7 +28,7 @@
 #define CTRLMMR_WKUP_DEVSTAT			(WKUP_CTRL_MMR0_BASE + 0x30)
 #define WKUP_DEVSTAT_PRIMARY_BOOTMODE_MASK	GENMASK(5, 3)
 #define WKUP_DEVSTAT_PRIMARY_BOOTMODE_SHIFT	3
-#define WKUP_DEVSTAT_MCU_OMLY_MASK		BIT(6)
+#define WKUP_DEVSTAT_MCU_ONLY_MASK		BIT(6)
 #define WKUP_DEVSTAT_MCU_ONLY_SHIFT		6
 
 /* ROM HANDOFF Structure location */

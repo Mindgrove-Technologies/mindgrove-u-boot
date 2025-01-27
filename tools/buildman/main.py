@@ -7,7 +7,7 @@
 """See README for more information"""
 
 try:
-    from importlib.resources import files
+    import importlib.resources
 except ImportError:
     # for Python 3.6
     import importlib_resources
@@ -25,6 +25,7 @@ from buildman import cmdline
 from buildman import control
 from u_boot_pylib import test_util
 from u_boot_pylib import tools
+from u_boot_pylib import tout
 
 def run_tests(skip_net_tests, debug, verbose, args):
     """Run the buildman tests
@@ -83,12 +84,22 @@ def run_buildman():
         run_test_coverage()
 
     elif args.full_help:
-        tools.print_full_help(str(files('buildman').joinpath('README.rst')))
+        if hasattr(importlib.resources, 'files'):
+            dirpath = importlib.resources.files('buildman')
+            tools.print_full_help(str(dirpath.joinpath('README.rst')))
+        else:
+            with importlib.resources.path('buildman', 'README.rst') as readme:
+                tools.print_full_help(str(readme))
+
 
     # Build selected commits for selected boards
     else:
-        bsettings.setup(args.config_file)
-        ret_code = control.do_buildman(args)
+        try:
+            tout.init(tout.INFO if args.verbose else tout.WARNING)
+            bsettings.setup(args.config_file)
+            ret_code = control.do_buildman(args)
+        finally:
+            tout.uninit()
         return ret_code
 
 

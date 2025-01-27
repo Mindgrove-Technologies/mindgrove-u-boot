@@ -6,13 +6,13 @@
  * Michal Simek <michal.simek@amd.com>
  */
 
-#include <common.h>
 #include <cpu_func.h>
 #include <fdtdec.h>
 #include <init.h>
 #include <env_internal.h>
 #include <log.h>
 #include <malloc.h>
+#include <spi.h>
 #include <time.h>
 #include <asm/cache.h>
 #include <asm/global_data.h>
@@ -194,24 +194,57 @@ static u8 versal_net_get_bootmode(void)
 	return bootmode;
 }
 
-int board_late_init(void)
+int spi_get_env_dev(void)
+{
+	struct udevice *dev;
+	int bootseq = -1;
+
+	switch (versal_net_get_bootmode()) {
+	case QSPI_MODE_24BIT:
+		puts("QSPI_MODE_24\n");
+		if (uclass_get_device_by_name(UCLASS_SPI,
+					      "spi@f1030000", &dev)) {
+			debug("QSPI driver for QSPI device is not present\n");
+			break;
+		}
+		bootseq = dev_seq(dev);
+		break;
+	case QSPI_MODE_32BIT:
+		puts("QSPI_MODE_32\n");
+		if (uclass_get_device_by_name(UCLASS_SPI,
+					      "spi@f1030000", &dev)) {
+			debug("QSPI driver for QSPI device is not present\n");
+			break;
+		}
+		bootseq = dev_seq(dev);
+		break;
+	case OSPI_MODE:
+		puts("OSPI_MODE\n");
+		if (uclass_get_device_by_name(UCLASS_SPI,
+					      "spi@f1010000", &dev)) {
+			debug("OSPI driver for OSPI device is not present\n");
+			break;
+		}
+		bootseq = dev_seq(dev);
+		break;
+	default:
+		break;
+	}
+
+	debug("bootseq %d\n", bootseq);
+	return bootseq;
+}
+
+static int boot_targets_setup(void)
 {
 	u8 bootmode;
 	struct udevice *dev;
 	int bootseq = -1;
 	int bootseq_len = 0;
 	int env_targets_len = 0;
-	const char *mode;
+	const char *mode = NULL;
 	char *new_targets;
 	char *env_targets;
-
-	if (!(gd->flags & GD_FLG_ENV_DEFAULT)) {
-		debug("Saved variables - Skipping\n");
-		return 0;
-	}
-
-	if (!IS_ENABLED(CONFIG_ENV_VARS_UBOOT_RUNTIME_CONFIG))
-		return 0;
 
 	bootmode = versal_net_get_bootmode();
 
@@ -229,8 +262,8 @@ int board_late_init(void)
 		puts("QSPI_MODE_24\n");
 		if (uclass_get_device_by_name(UCLASS_SPI,
 					      "spi@f1030000", &dev)) {
-			puts("Boot from QSPI but without QSPI enabled!\n");
-			return -1;
+			debug("QSPI driver for QSPI device is not present\n");
+			break;
 		}
 		mode = "xspi";
 		bootseq = dev_seq(dev);
@@ -239,8 +272,8 @@ int board_late_init(void)
 		puts("QSPI_MODE_32\n");
 		if (uclass_get_device_by_name(UCLASS_SPI,
 					      "spi@f1030000", &dev)) {
-			puts("Boot from QSPI but without QSPI enabled!\n");
-			return -1;
+			debug("QSPI driver for QSPI device is not present\n");
+			break;
 		}
 		mode = "xspi";
 		bootseq = dev_seq(dev);
@@ -249,8 +282,8 @@ int board_late_init(void)
 		puts("OSPI_MODE\n");
 		if (uclass_get_device_by_name(UCLASS_SPI,
 					      "spi@f1010000", &dev)) {
-			puts("Boot from OSPI but without OSPI enabled!\n");
-			return -1;
+			debug("OSPI driver for OSPI device is not present\n");
+			break;
 		}
 		mode = "xspi";
 		bootseq = dev_seq(dev);
@@ -260,12 +293,15 @@ int board_late_init(void)
 		mode = "mmc";
 		bootseq = dev_seq(dev);
 		break;
+	case SELECTMAP_MODE:
+		puts("SELECTMAP_MODE\n");
+		break;
 	case SD_MODE:
 		puts("SD_MODE\n");
 		if (uclass_get_device_by_name(UCLASS_MMC,
 					      "mmc@f1040000", &dev)) {
-			puts("Boot from SD0 but without SD0 enabled!\n");
-			return -1;
+			debug("SD0 driver for SD0 device is not present\n");
+			break;
 		}
 		debug("mmc0 device found at %p, seq %d\n", dev, dev_seq(dev));
 
@@ -279,8 +315,8 @@ int board_late_init(void)
 		puts("SD_MODE1\n");
 		if (uclass_get_device_by_name(UCLASS_MMC,
 					      "mmc@f1050000", &dev)) {
-			puts("Boot from SD1 but without SD1 enabled!\n");
-			return -1;
+			debug("SD1 driver for SD1 device is not present\n");
+			break;
 		}
 		debug("mmc1 device found at %p, seq %d\n", dev, dev_seq(dev));
 
@@ -288,37 +324,59 @@ int board_late_init(void)
 		bootseq = dev_seq(dev);
 		break;
 	default:
-		mode = "";
 		printf("Invalid Boot Mode:0x%x\n", bootmode);
 		break;
 	}
 
-	if (bootseq >= 0) {
-		bootseq_len = snprintf(NULL, 0, "%i", bootseq);
-		debug("Bootseq len: %x\n", bootseq_len);
+	if (mode) {
+		if (bootseq >= 0) {
+			bootseq_len = snprintf(NULL, 0, "%i", bootseq);
+			debug("Bootseq len: %x\n", bootseq_len);
+		}
+
+		/*
+		 * One terminating char + one byte for space between mode
+		 * and default boot_targets
+		 */
+		env_targets = env_get("boot_targets");
+		if (env_targets)
+			env_targets_len = strlen(env_targets);
+
+		new_targets = calloc(1, strlen(mode) + env_targets_len + 2 +
+				     bootseq_len);
+		if (!new_targets)
+			return -ENOMEM;
+
+		if (bootseq >= 0)
+			sprintf(new_targets, "%s%x %s", mode, bootseq,
+				env_targets ? env_targets : "");
+		else
+			sprintf(new_targets, "%s %s", mode,
+				env_targets ? env_targets : "");
+
+		env_set("boot_targets", new_targets);
 	}
 
-	/*
-	 * One terminating char + one byte for space between mode
-	 * and default boot_targets
-	 */
-	env_targets = env_get("boot_targets");
-	if (env_targets)
-		env_targets_len = strlen(env_targets);
+	return 0;
+}
 
-	new_targets = calloc(1, strlen(mode) + env_targets_len + 2 +
-			     bootseq_len);
-	if (!new_targets)
-		return -ENOMEM;
+int board_late_init(void)
+{
+	int ret;
 
-	if (bootseq >= 0)
-		sprintf(new_targets, "%s%x %s", mode, bootseq,
-			env_targets ? env_targets : "");
-	else
-		sprintf(new_targets, "%s %s", mode,
-			env_targets ? env_targets : "");
+	if (!(gd->flags & GD_FLG_ENV_DEFAULT)) {
+		debug("Saved variables - Skipping\n");
+		return 0;
+	}
 
-	env_set("boot_targets", new_targets);
+	if (!IS_ENABLED(CONFIG_ENV_VARS_UBOOT_RUNTIME_CONFIG))
+		return 0;
+
+	if (IS_ENABLED(CONFIG_DISTRO_DEFAULTS)) {
+		ret = boot_targets_setup();
+		if (ret)
+			return ret;
+	}
 
 	return board_late_init_xilinx();
 }
@@ -354,3 +412,35 @@ int dram_init(void)
 void reset_cpu(void)
 {
 }
+
+#if defined(CONFIG_ENV_IS_NOWHERE)
+enum env_location env_get_location(enum env_operation op, int prio)
+{
+	u8 bootmode = versal_net_get_bootmode();
+
+	if (prio)
+		return ENVL_UNKNOWN;
+
+	switch (bootmode) {
+	case EMMC_MODE:
+	case SD_MODE:
+	case SD1_LSHFT_MODE:
+	case SD_MODE1:
+		if (IS_ENABLED(CONFIG_ENV_IS_IN_FAT))
+			return ENVL_FAT;
+		if (IS_ENABLED(CONFIG_ENV_IS_IN_EXT4))
+			return ENVL_EXT4;
+		return ENVL_NOWHERE;
+	case OSPI_MODE:
+	case QSPI_MODE_24BIT:
+	case QSPI_MODE_32BIT:
+		if (IS_ENABLED(CONFIG_ENV_IS_IN_SPI_FLASH))
+			return ENVL_SPI_FLASH;
+		return ENVL_NOWHERE;
+	case JTAG_MODE:
+	case SELECTMAP_MODE:
+	default:
+		return ENVL_NOWHERE;
+	}
+}
+#endif

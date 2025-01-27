@@ -6,7 +6,7 @@
 
 #define LOG_CATEGORY UCLASS_BOOTSTD
 
-#include <common.h>
+#include <alist.h>
 #include <blk.h>
 #include <bootflow.h>
 #include <bootmeth.h>
@@ -61,6 +61,18 @@ int bootmeth_set_bootflow(struct udevice *dev, struct bootflow *bflow,
 	return ops->set_bootflow(dev, bflow, buf, size);
 }
 
+#if CONFIG_IS_ENABLED(BOOTSTD_FULL)
+int bootmeth_read_all(struct udevice *dev, struct bootflow *bflow)
+{
+	const struct bootmeth_ops *ops = bootmeth_get_ops(dev);
+
+	if (!ops->read_all)
+		return -ENOSYS;
+
+	return ops->read_all(dev, bflow);
+}
+#endif /* BOOTSTD_FULL */
+
 int bootmeth_boot(struct udevice *dev, struct bootflow *bflow)
 {
 	const struct bootmeth_ops *ops = bootmeth_get_ops(dev);
@@ -72,14 +84,15 @@ int bootmeth_boot(struct udevice *dev, struct bootflow *bflow)
 }
 
 int bootmeth_read_file(struct udevice *dev, struct bootflow *bflow,
-		       const char *file_path, ulong addr, ulong *sizep)
+		       const char *file_path, ulong addr,
+		       enum bootflow_img_t type, ulong *sizep)
 {
 	const struct bootmeth_ops *ops = bootmeth_get_ops(dev);
 
 	if (!ops->read_file)
 		return -ENOSYS;
 
-	return ops->read_file(dev, bflow, file_path, addr, sizep);
+	return ops->read_file(dev, bflow, file_path, addr, type, sizep);
 }
 
 int bootmeth_get_bootflow(struct udevice *dev, struct bootflow *bflow)
@@ -240,18 +253,32 @@ int bootmeth_set_order(const char *order_str)
 	return 0;
 }
 
-/**
- * setup_fs() - Set up read to read a file
- *
- * We must redo the setup before each filesystem operation. This function
- * handles that, including setting the filesystem type if a block device is not
- * being used
- *
- * @bflow: Information about file to try
- * @desc: Block descriptor to read from (NULL if not a block device)
- * Return: 0 if OK, -ve on error
- */
-static int setup_fs(struct bootflow *bflow, struct blk_desc *desc)
+int bootmeth_set_property(const char *name, const char *property, const char *value)
+{
+	int ret;
+	int len;
+	struct udevice *dev;
+	const struct bootmeth_ops *ops;
+
+	len = strlen(name);
+
+	ret = uclass_find_device_by_namelen(UCLASS_BOOTMETH, name, len,
+					    &dev);
+	if (ret) {
+		printf("Unknown bootmeth '%s'\n", name);
+		return ret;
+	}
+
+	ops = bootmeth_get_ops(dev);
+	if (!ops->set_property) {
+		printf("set_property not found\n");
+		return -ENODEV;
+	}
+
+	return ops->set_property(dev, property, value);
+}
+
+int bootmeth_setup_fs(struct bootflow *bflow, struct blk_desc *desc)
 {
 	int ret;
 
@@ -288,7 +315,7 @@ int bootmeth_try_file(struct bootflow *bflow, struct blk_desc *desc,
 	log_debug("   %s - err=%d\n", path, ret);
 
 	/* Sadly FS closes the file after fs_size() so we must redo this */
-	ret2 = setup_fs(bflow, desc);
+	ret2 = bootmeth_setup_fs(bflow, desc);
 	if (ret2)
 		return log_msg_ret("fs", ret2);
 
@@ -301,8 +328,10 @@ int bootmeth_try_file(struct bootflow *bflow, struct blk_desc *desc,
 	return 0;
 }
 
-int bootmeth_alloc_file(struct bootflow *bflow, uint size_limit, uint align)
+int bootmeth_alloc_file(struct bootflow *bflow, uint size_limit, uint align,
+			enum bootflow_img_t type)
 {
+	struct blk_desc *desc = NULL;
 	void *buf;
 	uint size;
 	int ret;
@@ -319,11 +348,18 @@ int bootmeth_alloc_file(struct bootflow *bflow, uint size_limit, uint align)
 	bflow->state = BOOTFLOWST_READY;
 	bflow->buf = buf;
 
+	if (bflow->blk)
+		desc = dev_get_uclass_plat(bflow->blk);
+
+	if (!bootflow_img_add(bflow, bflow->fname, type, map_to_sysmem(buf),
+			      size))
+		return log_msg_ret("bai", -ENOMEM);
+
 	return 0;
 }
 
 int bootmeth_alloc_other(struct bootflow *bflow, const char *fname,
-			 void **bufp, uint *sizep)
+			 enum bootflow_img_t type, void **bufp, uint *sizep)
 {
 	struct blk_desc *desc = NULL;
 	char path[200];
@@ -337,20 +373,24 @@ int bootmeth_alloc_other(struct bootflow *bflow, const char *fname,
 	if (bflow->blk)
 		desc = dev_get_uclass_plat(bflow->blk);
 
-	ret = setup_fs(bflow, desc);
+	ret = bootmeth_setup_fs(bflow, desc);
 	if (ret)
 		return log_msg_ret("fs", ret);
 
 	ret = fs_size(path, &size);
 	log_debug("   %s - err=%d\n", path, ret);
 
-	ret = setup_fs(bflow, desc);
+	ret = bootmeth_setup_fs(bflow, desc);
 	if (ret)
 		return log_msg_ret("fs", ret);
 
 	ret = fs_read_alloc(path, size, 0, &buf);
 	if (ret)
 		return log_msg_ret("all", ret);
+
+	if (!bootflow_img_add(bflow, bflow->fname, type, map_to_sysmem(buf),
+			      size))
+		return log_msg_ret("boi", -ENOMEM);
 
 	*bufp = buf;
 	*sizep = size;
@@ -359,7 +399,8 @@ int bootmeth_alloc_other(struct bootflow *bflow, const char *fname,
 }
 
 int bootmeth_common_read_file(struct udevice *dev, struct bootflow *bflow,
-			      const char *file_path, ulong addr, ulong *sizep)
+			      const char *file_path, ulong addr,
+			      enum bootflow_img_t type, ulong *sizep)
 {
 	struct blk_desc *desc = NULL;
 	loff_t len_read;
@@ -369,7 +410,7 @@ int bootmeth_common_read_file(struct udevice *dev, struct bootflow *bflow,
 	if (bflow->blk)
 		desc = dev_get_uclass_plat(bflow->blk);
 
-	ret = setup_fs(bflow, desc);
+	ret = bootmeth_setup_fs(bflow, desc);
 	if (ret)
 		return log_msg_ret("fs", ret);
 
@@ -379,7 +420,7 @@ int bootmeth_common_read_file(struct udevice *dev, struct bootflow *bflow,
 	if (size > *sizep)
 		return log_msg_ret("spc", -ENOSPC);
 
-	ret = setup_fs(bflow, desc);
+	ret = bootmeth_setup_fs(bflow, desc);
 	if (ret)
 		return log_msg_ret("fs", ret);
 
@@ -387,6 +428,9 @@ int bootmeth_common_read_file(struct udevice *dev, struct bootflow *bflow,
 	if (ret)
 		return ret;
 	*sizep = len_read;
+
+	if (!bootflow_img_add(bflow, bflow->fname, type, addr, size))
+		return log_msg_ret("bci", -ENOMEM);
 
 	return 0;
 }

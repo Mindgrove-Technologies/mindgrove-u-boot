@@ -33,6 +33,8 @@
 		optee {
 			method = "smc";
 			compatible = "linaro,optee-tz";
+			interrupt-parent = <&intc>;
+			interrupts = <GIC_PPI 15 (GIC_CPU_MASK_SIMPLE(1) | IRQ_TYPE_LEVEL_LOW)>;
 		};
 
 		scmi: scmi {
@@ -40,7 +42,6 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 			linaro,optee-channel-id = <0>;
-			shmem = <&scmi_shm>;
 
 			scmi_clk: protocol@14 {
 				reg = <0x14>;
@@ -50,6 +51,28 @@
 			scmi_reset: protocol@16 {
 				reg = <0x16>;
 				#reset-cells = <1>;
+			};
+
+			scmi_voltd: protocol@17 {
+				reg = <0x17>;
+
+				scmi_regu: regulators {
+					#address-cells = <1>;
+					#size-cells = <0>;
+
+					scmi_reg11: regulator@0 {
+						reg = <VOLTD_SCMI_REG11>;
+						regulator-name = "reg11";
+					};
+					scmi_reg18: regulator@1 {
+						reg = <VOLTD_SCMI_REG18>;
+						regulator-name = "reg18";
+					};
+					scmi_usb33: regulator@2 {
+						reg = <VOLTD_SCMI_USB33>;
+						regulator-name = "usb33";
+					};
+				};
 			};
 		};
 	};
@@ -77,47 +100,12 @@
 		always-on;
 	};
 
-	/* PWR 1v1, 1v8 and 3v3 regulators defined as fixed, waiting for SCMI */
-	reg11: reg11 {
-		compatible = "regulator-fixed";
-		regulator-name = "reg11";
-		regulator-min-microvolt = <1100000>;
-		regulator-max-microvolt = <1100000>;
-	};
-
-	reg18: reg18 {
-		compatible = "regulator-fixed";
-		regulator-name = "reg18";
-		regulator-min-microvolt = <1800000>;
-		regulator-max-microvolt = <1800000>;
-	};
-
-	usb33: usb33 {
-		compatible = "regulator-fixed";
-		regulator-name = "usb33";
-		regulator-min-microvolt = <3300000>;
-		regulator-max-microvolt = <3300000>;
-	};
-
 	soc {
 		compatible = "simple-bus";
 		#address-cells = <1>;
 		#size-cells = <1>;
 		interrupt-parent = <&intc>;
 		ranges;
-
-		scmi_sram: sram@2ffff000 {
-			compatible = "mmio-sram";
-			reg = <0x2ffff000 0x1000>;
-			#address-cells = <1>;
-			#size-cells = <1>;
-			ranges = <0 0x2ffff000 0x1000>;
-
-			scmi_shm: scmi-sram@0 {
-				compatible = "arm,scmi-shmem";
-				reg = <0 0x80>;
-			};
-		};
 
 		timers2: timer@40000000 {
 			#address-cells = <1>;
@@ -397,12 +385,42 @@
 			status = "disabled";
 		};
 
+		usart3: serial@4000f000 {
+			compatible = "st,stm32h7-uart";
+			reg = <0x4000f000 0x400>;
+			interrupts-extended = <&exti 28 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&rcc USART3_K>;
+			resets = <&rcc USART3_R>;
+			wakeup-source;
+			dmas = <&dmamux1 45 0x400 0x5>,
+			       <&dmamux1 46 0x400 0x1>;
+			dma-names = "rx", "tx";
+			status = "disabled";
+		};
+
 		uart4: serial@40010000 {
 			compatible = "st,stm32h7-uart";
 			reg = <0x40010000 0x400>;
-			interrupts = <GIC_SPI 53 IRQ_TYPE_LEVEL_HIGH>;
+			interrupts-extended = <&exti 30 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&rcc UART4_K>;
 			resets = <&rcc UART4_R>;
+			wakeup-source;
+			dmas = <&dmamux1 63 0x400 0x5>,
+			       <&dmamux1 64 0x400 0x1>;
+			dma-names = "rx", "tx";
+			status = "disabled";
+		};
+
+		uart5: serial@40011000 {
+			compatible = "st,stm32h7-uart";
+			reg = <0x40011000 0x400>;
+			interrupts-extended = <&exti 31 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&rcc UART5_K>;
+			resets = <&rcc UART5_R>;
+			wakeup-source;
+			dmas = <&dmamux1 65 0x400 0x5>,
+			       <&dmamux1 66 0x400 0x1>;
+			dma-names = "rx", "tx";
 			status = "disabled";
 		};
 
@@ -439,6 +457,32 @@
 			dma-names = "rx", "tx";
 			st,syscfg-fmp = <&syscfg 0x4 0x2>;
 			i2c-analog-filter;
+			status = "disabled";
+		};
+
+		uart7: serial@40018000 {
+			compatible = "st,stm32h7-uart";
+			reg = <0x40018000 0x400>;
+			interrupts-extended = <&exti 32 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&rcc UART7_K>;
+			resets = <&rcc UART7_R>;
+			wakeup-source;
+			dmas = <&dmamux1 79 0x400 0x5>,
+			       <&dmamux1 80 0x400 0x1>;
+			dma-names = "rx", "tx";
+			status = "disabled";
+		};
+
+		uart8: serial@40019000 {
+			compatible = "st,stm32h7-uart";
+			reg = <0x40019000 0x400>;
+			interrupts-extended = <&exti 33 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&rcc UART8_K>;
+			resets = <&rcc UART8_R>;
+			wakeup-source;
+			dmas = <&dmamux1 81 0x400 0x5>,
+			       <&dmamux1 82 0x400 0x1>;
+			dma-names = "rx", "tx";
 			status = "disabled";
 		};
 
@@ -522,6 +566,19 @@
 				compatible = "st,stm32-timer-counter";
 				status = "disabled";
 			};
+		};
+
+		usart6: serial@44003000 {
+			compatible = "st,stm32h7-uart";
+			reg = <0x44003000 0x400>;
+			interrupts-extended = <&exti 29 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&rcc USART6_K>;
+			resets = <&rcc USART6_R>;
+			wakeup-source;
+			dmas = <&dmamux1 71 0x400 0x5>,
+			       <&dmamux1 72 0x400 0x1>;
+			dma-names = "rx", "tx";
+			status = "disabled";
 		};
 
 		i2s1: audio-controller@44004000 {
@@ -744,7 +801,33 @@
 			g-tx-fifo-size = <256 16 16 16 16 16 16 16>;
 			dr_mode = "otg";
 			otg-rev = <0x200>;
-			usb33d-supply = <&usb33>;
+			usb33d-supply = <&scmi_usb33>;
+			status = "disabled";
+		};
+
+		usart1: serial@4c000000 {
+			compatible = "st,stm32h7-uart";
+			reg = <0x4c000000 0x400>;
+			interrupts-extended = <&exti 26 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&rcc USART1_K>;
+			resets = <&rcc USART1_R>;
+			wakeup-source;
+			dmas = <&dmamux1 41 0x400 0x5>,
+			       <&dmamux1 42 0x400 0x1>;
+			dma-names = "rx", "tx";
+			status = "disabled";
+		};
+
+		usart2: serial@4c001000 {
+			compatible = "st,stm32h7-uart";
+			reg = <0x4c001000 0x400>;
+			interrupts-extended = <&exti 27 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&rcc USART2_K>;
+			resets = <&rcc USART2_R>;
+			wakeup-source;
+			dmas = <&dmamux1 43 0x400 0x5>,
+			       <&dmamux1 44 0x400 0x1>;
+			dma-names = "rx", "tx";
 			status = "disabled";
 		};
 
@@ -1001,14 +1084,36 @@
 			reg = <0x50000000 0x1000>;
 			#clock-cells = <1>;
 			#reset-cells = <1>;
-			interrupts = <GIC_SPI 5 IRQ_TYPE_LEVEL_HIGH>;
-
 			clock-names = "hse", "hsi", "csi", "lse", "lsi";
 			clocks = <&scmi_clk CK_SCMI_HSE>,
 				 <&scmi_clk CK_SCMI_HSI>,
 				 <&scmi_clk CK_SCMI_CSI>,
 				 <&scmi_clk CK_SCMI_LSE>,
 				 <&scmi_clk CK_SCMI_LSI>;
+		};
+
+		pwr_regulators: pwr@50001000 {
+			compatible = "st,stm32mp1,pwr-reg";
+			reg = <0x50001000 0x10>;
+			status = "disabled";
+
+			reg11: reg11 {
+				regulator-name = "reg11";
+				regulator-min-microvolt = <1100000>;
+				regulator-max-microvolt = <1100000>;
+			};
+
+			reg18: reg18 {
+				regulator-name = "reg18";
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+			};
+
+			usb33: usb33 {
+				regulator-name = "usb33";
+				regulator-min-microvolt = <3300000>;
+				regulator-max-microvolt = <3300000>;
+			};
 		};
 
 		exti: interrupt-controller@5000d000 {
@@ -1129,6 +1234,14 @@
 			};
 		};
 
+		rng: rng@54004000 {
+			compatible = "st,stm32mp13-rng";
+			reg = <0x54004000 0x400>;
+			clocks = <&rcc RNG1_K>;
+			resets = <&rcc RNG1_R>;
+			status = "disabled";
+		};
+
 		mdma: dma-controller@58000000 {
 			compatible = "st,stm32h7-mdma";
 			reg = <0x58000000 0x1000>;
@@ -1215,6 +1328,37 @@
 			status = "disabled";
 		};
 
+		eth1: eth1@5800a000 {
+			compatible = "snps,dwmac-4.20a", "st,stm32mp13-dwmac";
+			reg = <0x5800a000 0x2000>;
+			reg-names = "stmmaceth";
+			interrupts-extended = <&intc GIC_SPI 62 IRQ_TYPE_LEVEL_HIGH>,
+					      <&exti 68 1>;
+			interrupt-names = "macirq", "eth_wake_irq";
+			clock-names = "stmmaceth",
+				      "mac-clk-tx",
+				      "mac-clk-rx",
+				      "ethstp",
+				      "eth-ck";
+			clocks = <&rcc ETH1MAC>,
+				 <&rcc ETH1TX>,
+				 <&rcc ETH1RX>,
+				 <&rcc ETH1STP>,
+				 <&rcc ETH1CK_K>;
+			st,syscon = <&syscfg 0x4 0xff0000>;
+			snps,mixed-burst;
+			snps,pbl = <2>;
+			snps,axi-config = <&stmmac_axi_config_1>;
+			snps,tso;
+			status = "disabled";
+
+			stmmac_axi_config_1: stmmac-axi-config {
+				snps,wr_osr_lmt = <0x7>;
+				snps,rd_osr_lmt = <0x7>;
+				snps,blen = <0 0 0 0 16 8 4>;
+			};
+		};
+
 		usbh_ohci: usb@5800c000 {
 			compatible = "generic-ohci";
 			reg = <0x5800c000 0x1000>;
@@ -1250,8 +1394,8 @@
 			reg = <0x5a006000 0x1000>;
 			clocks = <&rcc USBPHY_K>;
 			resets = <&rcc USBPHY_R>;
-			vdda1v1-supply = <&reg11>;
-			vdda1v8-supply = <&reg18>;
+			vdda1v1-supply = <&scmi_reg11>;
+			vdda1v8-supply = <&scmi_reg18>;
 			status = "disabled";
 
 			usbphyc_port0: usb-phy@0 {
@@ -1290,6 +1434,12 @@
 			};
 			ts_cal2: calib@5e {
 				reg = <0x5e 0x2>;
+			};
+			ethernet_mac1_address: mac1@e4 {
+				reg = <0xe4 0x6>;
+			};
+			ethernet_mac2_address: mac2@ea {
+				reg = <0xea 0x6>;
 			};
 		};
 

@@ -4,7 +4,6 @@
  * Written by Simon Glass <sjg@chromium.org>
  */
 
-#include <common.h>
 #include <dm.h>
 #include <dm/of_access.h>
 #include <mapmem.h>
@@ -150,6 +149,17 @@ fdt_addr_t dev_read_addr_size_index(const struct udevice *dev, int index,
 		return devfdt_get_addr_size_index(dev, index, size);
 }
 
+void *dev_read_addr_size_index_ptr(const struct udevice *dev, int index,
+				   fdt_size_t *size)
+{
+	fdt_addr_t addr = dev_read_addr_size_index(dev, index, size);
+
+	if (addr == FDT_ADDR_T_NONE)
+		return NULL;
+
+	return map_sysmem(addr, 0);
+}
+
 void *dev_remap_addr_index(const struct udevice *dev, int index)
 {
 	fdt_addr_t addr = dev_read_addr_index(dev, index);
@@ -170,6 +180,16 @@ fdt_addr_t dev_read_addr_name(const struct udevice *dev, const char *name)
 		return dev_read_addr_index(dev, index);
 }
 
+void *dev_read_addr_name_ptr(const struct udevice *dev, const char *name)
+{
+	fdt_addr_t addr = dev_read_addr_name(dev, name);
+
+	if (addr == FDT_ADDR_T_NONE)
+		return NULL;
+
+	return map_sysmem(addr, 0);
+}
+
 fdt_addr_t dev_read_addr_size_name(const struct udevice *dev, const char *name,
 				   fdt_size_t *size)
 {
@@ -179,6 +199,17 @@ fdt_addr_t dev_read_addr_size_name(const struct udevice *dev, const char *name,
 		return FDT_ADDR_T_NONE;
 	else
 		return dev_read_addr_size_index(dev, index, size);
+}
+
+void *dev_read_addr_size_name_ptr(const struct udevice *dev, const char *name,
+				  fdt_size_t *size)
+{
+	fdt_addr_t addr = dev_read_addr_size_name(dev, name, size);
+
+	if (addr == FDT_ADDR_T_NONE)
+		return NULL;
+
+	return map_sysmem(addr, 0);
 }
 
 void *dev_remap_addr_name(const struct udevice *dev, const char *name)
@@ -394,13 +425,15 @@ int dev_read_alias_highest_id(const char *stem)
 	return fdtdec_get_alias_highest_id(gd->fdt_blob, stem);
 }
 
-fdt_addr_t dev_read_addr_pci(const struct udevice *dev)
+fdt_addr_t dev_read_addr_pci(const struct udevice *dev, fdt_size_t *sizep)
 {
 	ulong addr;
 
 	addr = dev_read_addr(dev);
+	if (sizep)
+		*sizep = 0;
 	if (addr == FDT_ADDR_T_NONE && !of_live_active())
-		addr = devfdt_get_addr_pci(dev);
+		addr = devfdt_get_addr_pci(dev, sizep);
 
 	return addr;
 }

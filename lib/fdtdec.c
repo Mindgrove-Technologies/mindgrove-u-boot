@@ -7,7 +7,10 @@
  */
 
 #ifndef USE_HOSTCC
-#include <common.h>
+
+#define LOG_CATEGORY	LOGC_DT
+
+#include <bloblist.h>
 #include <boot_fit.h>
 #include <display_options.h>
 #include <dm.h>
@@ -87,7 +90,25 @@ static const char *const fdt_src_name[] = {
 	[FDTSRC_BOARD] = "board",
 	[FDTSRC_EMBED] = "embed",
 	[FDTSRC_ENV] = "env",
+	[FDTSRC_BLOBLIST] = "bloblist",
 };
+
+extern u8 __dtb_dt_begin[];	/* embedded device tree blob */
+extern u8 __dtb_dt_spl_begin[];	/* embedded device tree blob for SPL/TPL */
+
+/* Get a pointer to the embedded devicetree, if there is one, else NULL */
+static u8 *dtb_dt_embedded(void)
+{
+	u8 *addr = NULL;
+
+	if (IS_ENABLED(CONFIG_OF_EMBED)) {
+		addr = __dtb_dt_begin;
+
+		if (IS_ENABLED(CONFIG_XPL_BUILD))
+			addr = __dtb_dt_spl_begin;
+	}
+	return addr;
+}
 
 const char *fdtdec_get_srcname(void)
 {
@@ -604,7 +625,7 @@ int fdtdec_get_chosen_node(const void *blob, const char *name)
 static int fdtdec_prepare_fdt(const void *blob)
 {
 	if (!blob || ((uintptr_t)blob & 3) || fdt_check_header(blob)) {
-		if (spl_phase() <= PHASE_SPL) {
+		if (xpl_phase() <= PHASE_SPL) {
 			puts("Missing DTB\n");
 		} else {
 			printf("No valid device tree binary found at %p\n",
@@ -1168,16 +1189,15 @@ static int uncompress_blob(const void *src, ulong sz_src, void **dstp)
 	void *dst;
 	int rc;
 
-	if (CONFIG_IS_ENABLED(GZIP))
+	if (CONFIG_IS_ENABLED(GZIP) && CONFIG_IS_ENABLED(MULTI_DTB_FIT_GZIP))
 		if (gzip_parse_header(src, sz_in) >= 0)
 			gzip = 1;
-	if (CONFIG_IS_ENABLED(LZO))
+	if (CONFIG_IS_ENABLED(LZO) && CONFIG_IS_ENABLED(MULTI_DTB_FIT_LZO))
 		if (!gzip && lzop_is_valid_header(src))
 			lzo = 1;
 
 	if (!gzip && !lzo)
 		return -EBADMSG;
-
 
 	if (CONFIG_IS_ENABLED(MULTI_DTB_FIT_DYN_ALLOC)) {
 		dst = malloc(sz_out);
@@ -1227,15 +1247,15 @@ static void *fdt_find_separate(void)
 	if (IS_ENABLED(CONFIG_SANDBOX))
 		return NULL;
 
-#ifdef CONFIG_SPL_BUILD
+#ifdef CONFIG_XPL_BUILD
 	/* FDT is at end of BSS unless it is in a different memory region */
-	if (IS_ENABLED(CONFIG_SPL_SEPARATE_BSS))
-		fdt_blob = (ulong *)&_image_binary_end;
+	if (CONFIG_IS_ENABLED(SEPARATE_BSS))
+		fdt_blob = (ulong *)_image_binary_end;
 	else
-		fdt_blob = (ulong *)&__bss_end;
+		fdt_blob = (ulong *)__bss_end;
 #else
 	/* FDT is at end of image */
-	fdt_blob = (ulong *)&_end;
+	fdt_blob = (ulong *)_end;
 
 	if (_DEBUG && !fdtdec_prepare_fdt(fdt_blob)) {
 		int stack_ptr;
@@ -1661,29 +1681,68 @@ static void setup_multi_dtb_fit(void)
 	}
 }
 
+void fdtdec_setup_embed(void)
+{
+	gd->fdt_blob = dtb_dt_embedded();
+	gd->fdt_src = FDTSRC_EMBED;
+}
+
 int fdtdec_setup(void)
 {
-	int ret;
+	int ret = -ENOENT;
 
-	/* The devicetree is typically appended to U-Boot */
-	if (IS_ENABLED(CONFIG_OF_SEPARATE)) {
-		gd->fdt_blob = fdt_find_separate();
-		gd->fdt_src = FDTSRC_SEPARATE;
-	} else { /* embed dtb in ELF file for testing / development */
-		gd->fdt_blob = dtb_dt_embedded();
-		gd->fdt_src = FDTSRC_EMBED;
+	/*
+	 * If allowing a bloblist, check that first. There was discussion about
+	 * adding an OF_BLOBLIST Kconfig, but this was rejected.
+	 *
+	 * The necessary test is whether the previous phase passed a bloblist,
+	 * not whether this phase creates one.
+	 */
+	if (CONFIG_IS_ENABLED(BLOBLIST) &&
+	    (xpl_prev_phase() != PHASE_TPL ||
+	     IS_ENABLED(CONFIG_TPL_BLOBLIST))) {
+		ret = bloblist_maybe_init();
+		if (!ret) {
+			gd->fdt_blob = bloblist_find(BLOBLISTT_CONTROL_FDT, 0);
+			if (gd->fdt_blob) {
+				gd->fdt_src = FDTSRC_BLOBLIST;
+				log_debug("Devicetree is in bloblist at %p\n",
+					  gd->fdt_blob);
+				ret = 0;
+			} else {
+				log_debug("No FDT found in bloblist\n");
+				ret = -ENOENT;
+			}
+		}
+	}
+
+	/* Otherwise, the devicetree is typically appended to U-Boot */
+	if (ret) {
+		if (IS_ENABLED(CONFIG_OF_SEPARATE)) {
+			gd->fdt_blob = fdt_find_separate();
+			gd->fdt_src = FDTSRC_SEPARATE;
+		} else { /* embed dtb in ELF file for testing / development */
+			fdtdec_setup_embed();
+		}
 	}
 
 	/* Allow the board to override the fdt address. */
 	if (IS_ENABLED(CONFIG_OF_BOARD)) {
-		gd->fdt_blob = board_fdt_blob_setup(&ret);
-		if (ret)
-			return ret;
-		gd->fdt_src = FDTSRC_BOARD;
+		void *blob;
+
+		blob = (void *)gd->fdt_blob;
+		ret = board_fdt_blob_setup(&blob);
+		if (ret) {
+			if (ret != -EEXIST)
+				return ret;
+		} else {
+			gd->fdt_src = FDTSRC_BOARD;
+			gd->fdt_blob = blob;
+		}
 	}
 
 	/* Allow the early environment to override the fdt address */
-	if (!IS_ENABLED(CONFIG_SPL_BUILD)) {
+	if (!IS_ENABLED(CONFIG_XPL_BUILD)) {
 		ulong addr;
 
 		addr = env_get_hex("fdtcontroladdr", 0);

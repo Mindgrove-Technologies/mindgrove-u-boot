@@ -5,7 +5,6 @@
  *  NVIDIA Corporation <www.nvidia.com>
  */
 
-#include <common.h>
 #include <dm.h>
 #include <errno.h>
 #include <i2c.h>
@@ -21,6 +20,7 @@
 #include <asm/arch-tegra/tegra_i2c.h>
 #include <linux/delay.h>
 #include <linux/err.h>
+#include <linux/printk.h>
 
 enum i2c_type {
 	TYPE_114,

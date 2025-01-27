@@ -2,70 +2,52 @@
 /*
  * Clock specification for Xilinx ZynqMP
  *
- * (C) Copyright 2017 - 2021, Xilinx, Inc.
+ * (C) Copyright 2017 - 2022, Xilinx, Inc.
+ * (C) Copyright 2022 - 2023, Advanced Micro Devices, Inc.
  *
  * Michal Simek <michal.simek@amd.com>
  */
 
 #include <dt-bindings/clock/xlnx-zynqmp-clk.h>
 / {
-	fclk0: fclk0 {
-		status = "okay";
-		compatible = "xlnx,fclk";
-		clocks = <&zynqmp_clk PL0_REF>;
-	};
-
-	fclk1: fclk1 {
-		status = "okay";
-		compatible = "xlnx,fclk";
-		clocks = <&zynqmp_clk PL1_REF>;
-	};
-
-	fclk2: fclk2 {
-		status = "okay";
-		compatible = "xlnx,fclk";
-		clocks = <&zynqmp_clk PL2_REF>;
-	};
-
-	fclk3: fclk3 {
-		status = "okay";
-		compatible = "xlnx,fclk";
-		clocks = <&zynqmp_clk PL3_REF>;
-	};
-
-	pss_ref_clk: pss_ref_clk {
+	pss_ref_clk: pss-ref-clk {
 		bootph-all;
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
 		clock-frequency = <33333333>;
+		clock-output-names = "pss_ref_clk";
 	};
 
-	video_clk: video_clk {
+	video_clk: video-clk {
 		bootph-all;
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
 		clock-frequency = <27000000>;
+		clock-output-names = "video_clk";
 	};
 
-	pss_alt_ref_clk: pss_alt_ref_clk {
+	pss_alt_ref_clk: pss-alt-ref-clk {
 		bootph-all;
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
 		clock-frequency = <0>;
+		clock-output-names = "pss_alt_ref_clk";
 	};
 
-	gt_crx_ref_clk: gt_crx_ref_clk {
+	gt_crx_ref_clk: gt-crx-ref-clk {
 		bootph-all;
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
 		clock-frequency = <108000000>;
+		clock-output-names = "gt_crx_ref_clk";
 	};
 
-	aux_ref_clk: aux_ref_clk {
+	aux_ref_clk: aux-ref-clk {
 		bootph-all;
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
 		clock-frequency = <27000000>;
+		clock-output-names = "aux_ref_clk";
 	};
 };
 
@@ -91,6 +73,22 @@
 
 &cpu0 {
 	clocks = <&zynqmp_clk ACPU>;
+};
+
+&cpu0_debug {
+	clocks = <&zynqmp_clk DBF_FPD>;
+};
+
+&cpu1_debug {
+	clocks = <&zynqmp_clk DBF_FPD>;
+};
+
+&cpu2_debug {
+	clocks = <&zynqmp_clk DBF_FPD>;
+};
+
+&cpu3_debug {
+	clocks = <&zynqmp_clk DBF_FPD>;
 };
 
 &fpd_dma_chan1 {
@@ -253,10 +251,12 @@
 
 &uart0 {
 	clocks = <&zynqmp_clk UART0_REF>, <&zynqmp_clk LPD_LSBUS>;
+	assigned-clocks = <&zynqmp_clk UART0_REF>;
 };
 
 &uart1 {
 	clocks = <&zynqmp_clk UART1_REF>, <&zynqmp_clk LPD_LSBUS>;
+	assigned-clocks = <&zynqmp_clk UART1_REF>;
 };
 
 &usb0 {

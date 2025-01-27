@@ -22,7 +22,9 @@
 #define __aligned(x)	__attribute__((__aligned__(x)))
 #endif
 
-typedef struct {
+#define ARRAY_SIZE(x)		(sizeof(x) / sizeof((x)[0]))
+
+typedef struct efi_guid {
 	uint8_t b[16];
 } efi_guid_t __aligned(8);
 

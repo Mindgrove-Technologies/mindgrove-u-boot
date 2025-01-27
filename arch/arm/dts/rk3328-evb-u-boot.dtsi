@@ -45,7 +45,6 @@
 	status = "broken";
 };
 
-&usb_host0_xhci {
-	vbus-supply = <&vcc5v0_host_xhci>;
-	status = "okay";
+&vcc_sd {
+	bootph-pre-ram;
 };

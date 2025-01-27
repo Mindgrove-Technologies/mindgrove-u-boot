@@ -6,7 +6,6 @@
 
 #define LOG_CATEGORY UCLASS_SYSINFO
 
-#include <common.h>
 #include <dm.h>
 #include <sysinfo.h>
 
@@ -98,6 +97,26 @@ int sysinfo_get_str(struct udevice *dev, int id, size_t size, char *val)
 		return -ENOSYS;
 
 	return ops->get_str(dev, id, size, val);
+}
+
+int sysinfo_get_data(struct udevice *dev, int id, void **data, size_t *size)
+{
+	struct sysinfo_priv *priv;
+	struct sysinfo_ops *ops;
+
+	if (!dev)
+		return -ENOSYS;
+
+	priv = dev_get_uclass_priv(dev);
+	ops = sysinfo_get_ops(dev);
+
+	if (!priv->detected)
+		return -EPERM;
+
+	if (!ops->get_data)
+		return -ENOSYS;
+
+	return ops->get_data(dev, id, data, size);
 }
 
 UCLASS_DRIVER(sysinfo) = {

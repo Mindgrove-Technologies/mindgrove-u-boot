@@ -5,7 +5,7 @@
  * Copyright (c) 2022 DENX Software Engineering GmbH, Philip Oberfichtner <pro@denx.de>
  */
 
-#include <common.h>
+#include <config.h>
 #include <cpu_func.h>
 #include <bootstage.h>
 #include <dm.h>
@@ -27,6 +27,7 @@
 #include <asm/arch/mx6-pins.h>
 #include <asm/arch/sys_proto.h>
 #include <asm/mach-imx/iomux-v3.h>
+#include <asm/sections.h>
 #include <usb.h>
 #include <usb/ehci-ci.h>
 #include <fuse.h>
@@ -268,7 +269,7 @@ int dram_init(void)
 	return 0;
 }
 
-#if IS_ENABLED(CONFIG_SPL_BUILD)
+#if IS_ENABLED(CONFIG_XPL_BUILD)
 #include <asm/arch/crm_regs.h>
 #include <asm/arch/imx-regs.h>
 #include <asm/arch/iomux.h>
@@ -436,7 +437,7 @@ static const struct mx6_ddr3_cfg acc_mx6d_mem_ddr3_1066 = {
 	.trcd = 1313, // 13.125ns
 	.trcmin = 5063, // 50.625ns
 	.trasmin = 3750, // 37.5ns
-	.SRT = 0, // Set to 1 for temperatures above 85°C
+	.SRT = 0, // Set to 1 for temperatures above 85 deg C
 };
 
 static const struct mx6_ddr_sysinfo acc_mx6d_ddr_info = {

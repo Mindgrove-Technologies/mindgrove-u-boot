@@ -3,26 +3,22 @@
  * Copyright (c) 2016 Rockchip Electronics Co., Ltd
  */
 
-#include <common.h>
 #include <fdt_support.h>
 #include <init.h>
 #include <log.h>
 #include <spl.h>
-#include <spl_gpio.h>
 #include <syscon.h>
 #include <asm/armv8/mmu.h>
-#include <asm/global_data.h>
-#include <asm/io.h>
 #include <asm/arch-rockchip/bootrom.h>
 #include <asm/arch-rockchip/clock.h>
 #include <asm/arch-rockchip/cru.h>
 #include <asm/arch-rockchip/gpio.h>
 #include <asm/arch-rockchip/grf_rk3399.h>
 #include <asm/arch-rockchip/hardware.h>
+#include <asm/gpio.h>
 #include <linux/bitops.h>
+#include <linux/printk.h>
 #include <power/regulator.h>
-
-DECLARE_GLOBAL_DATA_PTR;
 
 #define GRF_EMMCCORE_CON11 0xff77f02c
 #define GRF_BASE	0xff770000
@@ -55,7 +51,7 @@ static struct mm_region rk3399_mem_map[] = {
 
 struct mm_region *mem_map = rk3399_mem_map;
 
-#ifdef CONFIG_SPL_BUILD
+#ifdef CONFIG_XPL_BUILD
 
 #define TIMER_END_COUNT_L	0x00
 #define TIMER_END_COUNT_H	0x04
@@ -87,7 +83,7 @@ void rockchip_stimer_init(void)
 int arch_cpu_init(void)
 {
 
-#ifdef CONFIG_SPL_BUILD
+#ifdef CONFIG_XPL_BUILD
 	struct rk3399_pmusgrf_regs *sgrf;
 	struct rk3399_grf_regs *grf;
 
@@ -137,27 +133,6 @@ void board_debug_uart_init(void)
 		     GRF_GPIO3B7_SEL_MASK,
 		     GRF_UART3_SOUT << GRF_GPIO3B7_SEL_SHIFT);
 #else
-	struct rk3399_pmugrf_regs * const pmugrf = (void *)PMUGRF_BASE;
-	struct rockchip_gpio_regs * const gpio = (void *)GPIO0_BASE;
-
-	if (IS_ENABLED(CONFIG_SPL_BUILD) &&
-	    (IS_ENABLED(CONFIG_TARGET_CHROMEBOOK_BOB) ||
-	     IS_ENABLED(CONFIG_TARGET_CHROMEBOOK_KEVIN))) {
-		rk_setreg(&grf->io_vsel, 1 << 0);
-
-		/*
-		 * Let's enable these power rails here, we are already running
-		 * the SPI-Flash-based code.
-		 */
-		spl_gpio_output(gpio, GPIO(BANK_B, 2), 1);  /* PP1500_EN */
-		spl_gpio_set_pull(&pmugrf->gpio0_p, GPIO(BANK_B, 2),
-				  GPIO_PULL_NORMAL);
-
-		spl_gpio_output(gpio, GPIO(BANK_B, 4), 1);  /* PP3000_EN */
-		spl_gpio_set_pull(&pmugrf->gpio0_p, GPIO(BANK_B, 4),
-				  GPIO_PULL_NORMAL);
-	}
-
 	/* Enable early UART2 channel C on the RK3399 */
 	rk_clrsetreg(&grf->gpio4c_iomux,
 		     GRF_GPIO4C3_SEL_MASK,
@@ -173,63 +148,36 @@ void board_debug_uart_init(void)
 }
 #endif
 
-#if defined(CONFIG_SPL_BUILD) && !defined(CONFIG_TPL_BUILD)
-const char *spl_decode_boot_device(u32 boot_device)
-{
-	int i;
-	static const struct {
-		u32 boot_device;
-		const char *ofpath;
-	} spl_boot_devices_tbl[] = {
-		{ BOOT_DEVICE_MMC2, "/mmc@fe320000" },
-		{ BOOT_DEVICE_MMC1, "/mmc@fe330000" },
-		{ BOOT_DEVICE_SPI, "/spi@ff1d0000/flash@0" },
-	};
-
-	for (i = 0; i < ARRAY_SIZE(spl_boot_devices_tbl); ++i)
-		if (spl_boot_devices_tbl[i].boot_device == boot_device)
-			return spl_boot_devices_tbl[i].ofpath;
-
-	return NULL;
-}
-
-void spl_perform_fixups(struct spl_image_info *spl_image)
-{
-	void *blob = spl_image->fdt_addr;
-	const char *boot_ofpath;
-	int chosen;
-
-	/*
-	 * Inject the ofpath of the device the full U-Boot (or Linux in
-	 * Falcon-mode) was booted from into the FDT, if a FDT has been
-	 * loaded at the same time.
-	 */
-	if (!blob)
-		return;
-
-	boot_ofpath = spl_decode_boot_device(spl_image->boot_device);
-	if (!boot_ofpath) {
-		pr_err("%s: could not map boot_device to ofpath\n", __func__);
-		return;
-	}
-
-	chosen = fdt_find_or_add_subnode(blob, 0, "chosen");
-	if (chosen < 0) {
-		pr_err("%s: could not find/create '/chosen'\n", __func__);
-		return;
-	}
-	fdt_setprop_string(blob, chosen,
-			   "u-boot,spl-boot-device", boot_ofpath);
-}
-
+#if defined(CONFIG_XPL_BUILD)
+#if defined(CONFIG_TPL_BUILD)
 static void rk3399_force_power_on_reset(void)
 {
+	const struct rockchip_cru *cru = rockchip_get_cru();
 	ofnode node;
 	struct gpio_desc sysreset_gpio;
 
-	if (!IS_ENABLED(CONFIG_SPL_GPIO)) {
+	/*
+	 * The RK3399 resets only 'almost all logic' (see also in the
+	 * TRM "3.9.4 Global software reset"), when issuing a software
+	 * reset. This may cause issues during boot-up for some
+	 * configurations of the application software stack.
+	 *
+	 * To work around this, we test whether the last reset reason
+	 * was a power-on reset and (if not) issue an overtemp-reset to
+	 * reset the entire module.
+	 *
+	 * While this was previously fixed by modifying the various
+	 * places that could generate a software reset (e.g. U-Boot's
+	 * sysreset driver, the ATF or Linux), we now have it here to
+	 * ensure that we no longer have to track this through the
+	 * various components.
+	 */
+	if (cru->glb_rst_st == 0)
+		return;
+
+	if (!IS_ENABLED(CONFIG_TPL_GPIO)) {
 		debug("%s: trying to force a power-on reset but no GPIO "
-		      "support in SPL!\n", __func__);
+		      "support in TPL!\n", __func__);
 		return;
 	}
 
@@ -250,6 +198,11 @@ static void rk3399_force_power_on_reset(void)
 	dm_gpio_set_value(&sysreset_gpio, 1);
 }
 
+void tpl_board_init(void)
+{
+	rk3399_force_power_on_reset();
+}
+# else
 void __weak led_setup(void)
 {
 }
@@ -257,38 +210,6 @@ void __weak led_setup(void)
 void spl_board_init(void)
 {
 	led_setup();
-
-	if (IS_ENABLED(CONFIG_SPL_GPIO)) {
-		struct rockchip_cru *cru = rockchip_get_cru();
-
-		/*
-		 * The RK3399 resets only 'almost all logic' (see also in the
-		 * TRM "3.9.4 Global software reset"), when issuing a software
-		 * reset. This may cause issues during boot-up for some
-		 * configurations of the application software stack.
-		 *
-		 * To work around this, we test whether the last reset reason
-		 * was a power-on reset and (if not) issue an overtemp-reset to
-		 * reset the entire module.
-		 *
-		 * While this was previously fixed by modifying the various
-		 * places that could generate a software reset (e.g. U-Boot's
-		 * sysreset driver, the ATF or Linux), we now have it here to
-		 * ensure that we no longer have to track this through the
-		 * various components.
-		 */
-		if (cru->glb_rst_st != 0)
-			rk3399_force_power_on_reset();
-	}
-
-	if (IS_ENABLED(CONFIG_SPL_DM_REGULATOR)) {
-		/*
-		 * Turning the eMMC and SPI back on (if disabled via the Qseven
-		 * BIOS_ENABLE) signal is done through a always-on regulator).
-		 */
-		if (regulators_enable_boot_on(false))
-			debug("%s: Cannot enable boot on regulator\n",
-			      __func__);
-	}
 }
+#endif
 #endif

@@ -21,6 +21,7 @@ struct toradex_eth_addr {
 } __attribute__((__packed__));
 
 struct toradex_som {
+	int pid4;
 	const char *name;
 	int is_enabled;
 };
@@ -94,13 +95,39 @@ enum {
 	VERDIN_IMX8MPQ_8GB_WIFI_BT,
 	APALIS_IMX8QM_8GB_WIFI_BT_IT,
 	VERDIN_IMX8MMQ_WIFI_BT_IT_NO_CAN,
-	/* 69 */
-	VERDIN_IMX8MPQ_8GB_WIFI_BT_IT = 70, /* 70 */
+	VERDIN_AM62Q_WIFI_BT_IT,
+	VERDIN_IMX8MPQ_8GB_WIFI_BT_IT, /* 70 */
+	VERDIN_AM62S_512MB,
+	VERDIN_AM62S_512MB_WIFI_BT_IT,
+	VERDIN_AM62D_1G_ET,
+	VERDIN_AM62D_1G_IT,
+	VERDIN_AM62D_1G_WIFI_BT_IT, /* 75 */
+	VERDIN_AM62Q_2G_WIFI_BT_IT,
+	COLIBRI_IMX6S_NOWINCE,
+	COLIBRI_IMX6S_IT_NOWINCE,
+	COLIBRI_IMX6DL_NOWINCE,
+	COLIBRI_IMX6DL_IT_NOWINCE, /* 80 */
+	COLIBRI_IMX7D_NOWINCE,
+	APALIS_IMX6D_NOWINCE,
+	APALIS_IMX6Q_NOWINCE,
+	APALIS_IMX6D_IT_NOWINCE,
+	APALIS_IMX6Q_IT_NOWINCE, /* 85 */
+	VERDIN_IMX8MMDL_2G_IT,
+	VERDIN_IMX8MMQ_2G_IT_NO_CAN,
+	AQUILA_AM69O_32G_WIFI_BT_IT,
+	VERDIN_IMX95H_16G_WIFI_BT_IT,
+	VERDIN_IMX8MMQ_4G_WIFI_BT_ET, /* 90 */
+	APALIS_IMX8QM_WIFI_BT_IT_1300MHZ,
+	APALIS_IMX8QM_IT_1300MHZ,
+	APALIS_IMX8QP_WIFI_BT_1300MHZ,
+	APALIS_IMX8QP_1300MHZ,
+	APALIS_IMX8QM_8GB_WIFI_BT_IT_1300MHZ, /* 95 */
 };
 
 enum {
 	DAHLIA = 155,
 	VERDIN_DEVELOPMENT_BOARD = 156,
+	YAVIA = 173,
 };
 
 enum {
@@ -109,7 +136,6 @@ enum {
 };
 
 extern const struct toradex_som toradex_modules[];
-extern const char * const toradex_carrier_boards[];
 extern bool valid_cfgblock;
 extern struct toradex_hw tdx_hw_tag;
 extern struct toradex_hw tdx_car_hw_tag;
@@ -119,7 +145,9 @@ extern u32 tdx_car_serial;
 
 int read_tdx_cfg_block(void);
 int read_tdx_cfg_block_carrier(void);
-
+int get_toradex_modules_idx(int pid4);
+const char * const get_toradex_carrier_boards(int pid4);
+const char * const get_toradex_display_adapters(int pid4);
 int try_migrate_tdx_cfg_block_carrier(void);
 
 void get_mac_from_serial(u32 tdx_serial, struct toradex_eth_addr *eth_addr);

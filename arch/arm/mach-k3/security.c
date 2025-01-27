@@ -2,12 +2,11 @@
 /*
  * K3: Security functions
  *
- * Copyright (C) 2018-2022 Texas Instruments Incorporated - http://www.ti.com/
+ * Copyright (C) 2018-2022 Texas Instruments Incorporated - https://www.ti.com/
  *	Andrew F. Davis <afd@ti.com>
  */
 
 #include <asm/io.h>
-#include <common.h>
 #include <cpu_func.h>
 #include <dm.h>
 #include <hang.h>
@@ -51,7 +50,7 @@ void ti_secure_image_check_binary(void **p_image, size_t *p_size)
 
 	if (get_device_type() == K3_DEVICE_TYPE_GP) {
 		if (ti_secure_cert_detected(*p_image)) {
-			printf("Warning: Detected image signing certificate on GP device. "
+			debug("Warning: Detected image signing certificate on GP device. "
 			       "Skipping certificate to prevent boot failure. "
 			       "This will fail if the image was also encrypted\n");
 
@@ -61,18 +60,11 @@ void ti_secure_image_check_binary(void **p_image, size_t *p_size)
 				return;
 			}
 
+			printf("Skipping authentication on GP device\n");
 			*p_image += cert_length;
 			*p_size -= cert_length;
 		}
 
-		return;
-	}
-
-	if (get_device_type() != K3_DEVICE_TYPE_HS_SE &&
-	    !ti_secure_cert_detected(*p_image)) {
-		printf("Warning: Did not detect image signing certificate. "
-		       "Skipping authentication to prevent boot failure. "
-		       "This will fail on Security Enforcing(HS-SE) devices\n");
 		return;
 	}
 }
@@ -91,10 +83,16 @@ void ti_secure_image_post_process(void **p_image, size_t *p_size)
 		return;
 	}
 
-	if (get_device_type() == K3_DEVICE_TYPE_GP &&
-	    (get_device_type() != K3_DEVICE_TYPE_HS_SE &&
-	     !ti_secure_cert_detected(*p_image)))
+	if (get_device_type() == K3_DEVICE_TYPE_GP)
 		return;
+
+	if (get_device_type() != K3_DEVICE_TYPE_HS_SE &&
+	    !ti_secure_cert_detected(*p_image)) {
+		printf("Warning: Did not detect image signing certificate. "
+		       "Skipping authentication to prevent boot failure. "
+		       "This will fail on Security Enforcing(HS-SE) devices\n");
+		return;
+	}
 
 	/* Clean out image so it can be seen by system firmware */
 	image_addr = dma_map_single(*p_image, *p_size, DMA_BIDIRECTIONAL);
@@ -128,7 +126,7 @@ void ti_secure_image_post_process(void **p_image, size_t *p_size)
 	 * via YMODEM. This is done to avoid disturbing the YMODEM serial
 	 * protocol transactions.
 	 */
-	if (!(IS_ENABLED(CONFIG_SPL_BUILD) &&
+	if (!(IS_ENABLED(CONFIG_XPL_BUILD) &&
 	      IS_ENABLED(CONFIG_SPL_YMODEM_SUPPORT) &&
 	      spl_boot_device() == BOOT_DEVICE_UART))
 		printf("Authentication passed\n");

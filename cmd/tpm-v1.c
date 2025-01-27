@@ -3,10 +3,10 @@
  * Copyright (c) 2013 The Chromium OS Authors.
  */
 
-#include <common.h>
 #include <command.h>
 #include <env.h>
 #include <malloc.h>
+#include <vsprintf.h>
 #include <asm/unaligned.h>
 #include <tpm-common.h>
 #include <tpm-v1.h>
@@ -655,7 +655,7 @@ TPM_COMMAND_NO_ARG(tpm_physical_disable)
 static struct cmd_tbl tpm1_commands[] = {
 	U_BOOT_CMD_MKENT(device, 0, 1, do_tpm_device, "", ""),
 	U_BOOT_CMD_MKENT(info, 0, 1, do_tpm_info, "", ""),
-	U_BOOT_CMD_MKENT(init, 0, 1, do_tpm_autostart, "", ""),
+	U_BOOT_CMD_MKENT(autostart, 0, 1, do_tpm_autostart, "", ""),
 	U_BOOT_CMD_MKENT(init, 0, 1, do_tpm_init, "", ""),
 	U_BOOT_CMD_MKENT(startup, 0, 1,
 			 do_tpm_startup, "", ""),

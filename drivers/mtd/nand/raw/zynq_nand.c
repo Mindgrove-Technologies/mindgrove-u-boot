@@ -6,7 +6,6 @@
  * This driver is based on plat_nand.c and mxc_nand.c drivers
  */
 
-#include <common.h>
 #include <log.h>
 #include <malloc.h>
 #include <asm/io.h>
@@ -21,6 +20,7 @@
 #include <asm/arch/hardware.h>
 #include <asm/arch/sys_proto.h>
 #include <dm.h>
+#include <linux/printk.h>
 
 /* The NAND flash driver defines */
 #define ZYNQ_NAND_CMD_PHASE		1
@@ -50,7 +50,6 @@
 				(0x5 << 4)   |	/* t_wc from nand_cycles */ \
 				(0x5 << 0))	/* t_rc from nand_cycles */
 #endif
-
 
 #define ZYNQ_NAND_DIRECT_CMD	((0x4 << 23) |	/* Chip 0 from interface 1 */ \
 				(0x2 << 21))	/* UpdateRegs operation */

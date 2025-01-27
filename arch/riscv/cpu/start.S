@@ -11,7 +11,6 @@
 
 #include <asm-offsets.h>
 #include <config.h>
-#include <common.h>
 #include <elf.h>
 #include <system-constants.h>
 #include <asm/encoding.h>
@@ -91,7 +90,7 @@ _start:
  * Set stackpointer in internal/ex RAM to call board_init_f
  */
 call_board_init_f:
-#if defined(CONFIG_SPL_BUILD) && defined(CONFIG_SPL_STACK)
+#if defined(CONFIG_XPL_BUILD) && defined(CONFIG_SPL_STACK)
 	li	t0, CONFIG_SPL_STACK
 #else
 	li	t0, SYS_INIT_SP_ADDR
@@ -110,6 +109,18 @@ call_board_init_f:
  * Now sp points to the right stack belonging to current CPU.
  * It's essential before any function call, otherwise, we get data-race.
  */
+
+/* clear stack if necessary */
+#if CONFIG_IS_ENABLED(ZERO_MEM_BEFORE_USE)
+clear_stack:
+	li	t1, 1
+	slli	t1, t1, CONFIG_STACK_SIZE_SHIFT
+	sub	t1, sp, t1
+clear_stack_loop:
+	SREG	zero, 0(t1)		/* t1 is always 16 byte aligned */
+	addi	t1, t1, REGBYTES
+	blt	t1, sp, clear_stack_loop
+#endif
 
 call_board_init_f_0:
 	/* find top of reserve space */
@@ -199,10 +210,6 @@ wait_for_gd_init:
 	bnez	s2, secondary_hart_loop
 #endif
 
-	/* Enable cache */
-	jal	icache_enable
-	jal	dcache_enable
-
 #ifdef CONFIG_DEBUG_UART
 	jal	debug_uart_init
 #endif
@@ -211,7 +218,7 @@ wait_for_gd_init:
 	la	t5, board_init_f
 	jalr	t5			/* jump to board_init_f() */
 
-#ifdef CONFIG_SPL_BUILD
+#ifdef CONFIG_XPL_BUILD
 spl_clear_bss:
 	la	t0, __bss_start
 	la	t1, __bss_end
@@ -264,7 +271,7 @@ spl_call_board_init_r:
 	j	board_init_r
 #endif
 
-#if !defined(CONFIG_SPL_BUILD)
+#if !defined(CONFIG_XPL_BUILD)
 /*
  * void relocate_code(addr_sp, gd, addr_moni)
  *
@@ -407,12 +414,13 @@ call_board_init_r:
  */
 	mv	a0, s3			/* gd_t */
 	mv	a1, s4			/* dest_addr */
+	mv	s0, zero		/* fp == NULL */
 
 /*
  * jump to it ...
  */
 	jr	t4			/* jump to board_init_r() */
-#endif /* !defined(CONFIG_SPL_BUILD) */
+#endif /* !defined(CONFIG_XPL_BUILD) */
 
 #if CONFIG_IS_ENABLED(SMP)
 hart_out_of_bounds_loop:

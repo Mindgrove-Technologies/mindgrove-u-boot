@@ -23,7 +23,6 @@
  * only
  */
 
-#include <common.h>
 #include <bootstage.h>
 #include <image.h>
 #include <asm/cache.h>
@@ -34,6 +33,7 @@
 #include <env.h>
 #include <watchdog.h>
 #include <malloc.h>
+#include <mapmem.h>
 #include <asm/byteorder.h>
 #include <jffs2/jffs2.h>
 #include <nand.h>
@@ -230,6 +230,54 @@ free_dat:
 
 	return ret;
 }
+
+#ifdef CONFIG_CMD_NAND_WATCH
+static int nand_watch_bf(struct mtd_info *mtd, ulong off, ulong size, bool quiet)
+{
+	unsigned int max_bf = 0, pages_wbf = 0;
+	unsigned int first_page, pages, i;
+	struct mtd_oob_ops ops = {};
+	u_char *buf;
+	int ret;
+
+	buf = memalign(ARCH_DMA_MINALIGN, mtd->writesize);
+	if (!buf) {
+		puts("No memory for page buffer\n");
+		return 1;
+	}
+
+	first_page = off / mtd->writesize;
+	pages = size / mtd->writesize;
+
+	ops.datbuf = buf;
+	ops.len = mtd->writesize;
+	for (i = first_page; i < first_page + pages; i++) {
+		ulong addr = mtd->writesize * i;
+		ret = mtd_read_oob_bf(mtd, addr, &ops);
+		if (ret < 0) {
+			if (quiet)
+				continue;
+
+			printf("Page %7d (0x%08lx) -> error %d\n",
+			       i, addr, ret);
+		} else if (ret) {
+			max_bf = max(max_bf, (unsigned int)ret);
+			pages_wbf++;
+			if (quiet)
+				continue;
+			printf("Page %7d (0x%08lx) -> up to %2d bf/chunk\n",
+			       i, addr, ret);
+		}
+	}
+
+	printf("Maximum number of bitflips: %u\n", max_bf);
+	printf("Pages with bitflips: %u/%u\n", pages_wbf, pages);
+
+	free(buf);
+
+	return 0;
+}
+#endif
 
 /* ------------------------------------------------------------------------- */
 
@@ -432,7 +480,7 @@ static void nand_print_and_set_info(int idx)
 	env_set_hex("nand_erasesize", mtd->erasesize);
 }
 
-static int raw_access(struct mtd_info *mtd, ulong addr, loff_t off,
+static int raw_access(struct mtd_info *mtd, void *buf, loff_t off,
 		      ulong count, int read, int no_verify)
 {
 	int ret = 0;
@@ -440,8 +488,8 @@ static int raw_access(struct mtd_info *mtd, ulong addr, loff_t off,
 	while (count--) {
 		/* Raw access */
 		mtd_oob_ops_t ops = {
-			.datbuf = (u8 *)addr,
-			.oobbuf = ((u8 *)addr) + mtd->writesize,
+			.datbuf = buf,
+			.oobbuf = buf + mtd->writesize,
 			.len = mtd->writesize,
 			.ooblen = mtd->oobsize,
 			.mode = MTD_OPS_RAW
@@ -461,7 +509,7 @@ static int raw_access(struct mtd_info *mtd, ulong addr, loff_t off,
 			break;
 		}
 
-		addr += mtd->writesize + mtd->oobsize;
+		buf += mtd->writesize + mtd->oobsize;
 		off += mtd->writesize;
 	}
 
@@ -675,6 +723,7 @@ static int do_nand(struct cmd_tbl *cmdtp, int flag, int argc,
 		int read;
 		int raw = 0;
 		int no_verify = 0;
+		void *buf;
 
 		if (argc < 4)
 			goto usage;
@@ -730,32 +779,32 @@ static int do_nand(struct cmd_tbl *cmdtp, int flag, int argc,
 		}
 
 		mtd = get_nand_dev_by_index(dev);
+		buf = map_sysmem(addr, maxsize);
 
 		if (!s || !strcmp(s, ".jffs2") ||
 		    !strcmp(s, ".e") || !strcmp(s, ".i")) {
 			if (read)
 				ret = nand_read_skip_bad(mtd, off, &rwsize,
-							 NULL, maxsize,
-							 (u_char *)addr);
+							 NULL, maxsize, buf);
 			else
 				ret = nand_write_skip_bad(mtd, off, &rwsize,
-							  NULL, maxsize,
-							  (u_char *)addr,
+							  NULL, maxsize, buf,
 							  WITH_WR_VERIFY);
 #ifdef CONFIG_CMD_NAND_TRIMFFS
 		} else if (!strcmp(s, ".trimffs")) {
 			if (read) {
 				printf("Unknown nand command suffix '%s'\n", s);
+				unmap_sysmem(buf);
 				return 1;
 			}
 			ret = nand_write_skip_bad(mtd, off, &rwsize, NULL,
-						maxsize, (u_char *)addr,
+						maxsize, buf,
 						WITH_DROP_FFS | WITH_WR_VERIFY);
 #endif
 		} else if (!strcmp(s, ".oob")) {
 			/* out-of-band data */
 			mtd_oob_ops_t ops = {
-				.oobbuf = (u8 *)addr,
+				.oobbuf = buf,
 				.ooblen = rwsize,
 				.mode = MTD_OPS_RAW
 			};
@@ -765,18 +814,69 @@ static int do_nand(struct cmd_tbl *cmdtp, int flag, int argc,
 			else
 				ret = mtd_write_oob(mtd, off, &ops);
 		} else if (raw) {
-			ret = raw_access(mtd, addr, off, pagecount, read,
+			ret = raw_access(mtd, buf, off, pagecount, read,
 					 no_verify);
 		} else {
 			printf("Unknown nand command suffix '%s'.\n", s);
+			unmap_sysmem(buf);
 			return 1;
 		}
 
+		unmap_sysmem(buf);
 		printf(" %zu bytes %s: %s\n", rwsize,
 		       read ? "read" : "written", ret ? "ERROR" : "OK");
 
 		return ret == 0 ? 0 : 1;
 	}
+
+#ifdef CONFIG_CMD_NAND_WATCH
+	if (strncmp(cmd, "watch", 5) == 0) {
+		int args = 2;
+
+		if (cmd[5]) {
+			if (!strncmp(&cmd[5], ".part", 5)) {
+				args = 1;
+			} else if (!strncmp(&cmd[5], ".chip", 5)) {
+				args = 0;
+			} else {
+				goto usage;
+			}
+		}
+
+		if (cmd[10])
+			if (!strncmp(&cmd[10], ".quiet", 6))
+				quiet = true;
+
+		if (argc != 2 + args)
+			goto usage;
+
+		ret = mtd_arg_off_size(argc - 2, argv + 2, &dev, &off, &size,
+				       &maxsize, MTD_DEV_TYPE_NAND, mtd->size);
+		if (ret)
+			return ret;
+
+		/* size is unspecified */
+		if (argc < 4)
+			adjust_size_for_badblocks(&size, off, dev);
+
+		if ((off & (mtd->writesize - 1)) ||
+		    (size & (mtd->writesize - 1))) {
+			printf("Attempt to read non page-aligned data\n");
+			return -EINVAL;
+		}
+
+		ret = set_dev(dev);
+		if (ret)
+			return ret;
+
+		mtd = get_nand_dev_by_index(dev);
+
+		printf("\nNAND watch for bitflips in area 0x%llx-0x%llx:\n",
+		       off, off + size);
+
+		return nand_watch_bf(mtd, off, size, quiet);
+	}
+#endif
 
 #ifdef CONFIG_CMD_NAND_TORTURE
 	if (strcmp(cmd, "torture") == 0) {
@@ -919,8 +1019,7 @@ usage:
 	return CMD_RET_USAGE;
 }
 
-#ifdef CONFIG_SYS_LONGHELP
-static char nand_help_text[] =
+U_BOOT_LONGHELP(nand,
 	"info - show available NAND devices\n"
 	"nand device [dev] - show or set current device\n"
 	"nand read - addr off|partition size\n"
@@ -944,6 +1043,12 @@ static char nand_help_text[] =
 	"nand erase.chip [clean] - erase entire chip'\n"
 	"nand bad - show bad blocks\n"
 	"nand dump[.oob] off - dump page\n"
+#ifdef CONFIG_CMD_NAND_WATCH
+	"nand watch <off> <size> - check an area for bitflips\n"
+	"nand watch.part <part> - check a partition for bitflips\n"
+	"nand watch.chip - check the whole device for bitflips\n"
+	"\t\t.quiet - Query only the summary, not the details\n"
+#endif
 #ifdef CONFIG_CMD_NAND_TORTURE
 	"nand torture off - torture one block at offset\n"
 	"nand torture off [size] - torture blocks from off to off+size\n"
@@ -965,8 +1070,7 @@ static char nand_help_text[] =
 	"nand env.oob set off|partition - set enviromnent offset\n"
 	"nand env.oob get - get environment offset"
 #endif
-	"";
-#endif
+	);
 
 U_BOOT_CMD(
 	nand, CONFIG_SYS_MAXARGS, 1, do_nand,

@@ -186,23 +186,22 @@ Setting up
 #. Create ~/.buildman to tell buildman where to find tool chains (see
    buildman_settings_ for details). As an example::
 
-   # Buildman settings file
+      # Buildman settings file
 
-   [toolchain]
-   root: /
-   rest: /toolchains/*
-   eldk: /opt/eldk-4.2
-   arm: /opt/linaro/gcc-linaro-arm-linux-gnueabihf-4.8-2013.08_linux
-   aarch64: /opt/linaro/gcc-linaro-aarch64-none-elf-4.8-2013.10_linux
+      [toolchain]
+      root: /
+      rest: /toolchains/*
+      eldk: /opt/eldk-4.2
+      arm: /opt/linaro/gcc-linaro-arm-linux-gnueabihf-4.8-2013.08_linux
+      aarch64: /opt/linaro/gcc-linaro-aarch64-none-elf-4.8-2013.10_linux
 
-   [toolchain-prefix]
-   arc = /opt/arc/arc_gnu_2021.03_prebuilt_elf32_le_linux_install/bin/arc-elf32-
+      [toolchain-prefix]
+      arc = /opt/arc/arc_gnu_2021.03_prebuilt_elf32_le_linux_install/bin/arc-elf32-
 
-   [toolchain-alias]
-   riscv = riscv32
-   sh = sh4
-   x86: i386
-
+      [toolchain-alias]
+      riscv = riscv32
+      sh = sh4
+      x86: i386
 
    This selects the available toolchain paths. Add the base directory for
    each of your toolchains here. Buildman will search inside these directories
@@ -934,6 +933,18 @@ a set of (tag, value) pairs.
     For example powerpc-linux-gcc will be noted as a toolchain for 'powerpc'
     and CROSS_COMPILE will be set to powerpc-linux- when using it.
 
+    The tilde character ``~`` is supported in paths, to represent the home
+    directory.
+
+'[toolchain-prefix]' section
+    This can be used to provide the full toolchain-prefix for one or more
+    architectures. The full CROSS_COMPILE prefix must be provided. These
+    typically have a higher priority than matches in the '[toolchain]', due to
+    this prefix.
+
+    The tilde character ``~`` is supported in paths, to represent the home
+    directory.
+
 '[toolchain-alias]' section
     This converts toolchain architecture names to U-Boot names. For example,
     if an x86 toolchains is called i386-linux-gcc it will not normally be
@@ -995,7 +1006,8 @@ By default, buildman doesn't execute 'make mrproper' prior to building the
 first commit for each board. This reduces the amount of work 'make' does, and
 hence speeds up the build. To force use of 'make mrproper', use -the -m flag.
 This flag will slow down any buildman invocation, since it increases the amount
-of work done on any build.
+of work done on any build. An alternative is to use the --fallback-mrproper
+flag, which retries the build with 'make mrproper' only after a build failure.
 
 One possible application of buildman is as part of a continual edit, build,
 edit, build, ... cycle; repeatedly applying buildman to the same change or
@@ -1029,6 +1041,9 @@ of the source tree, thus allowing rapid tested evolution of the code::
 
     ./tools/buildman/buildman -Pr tegra
 
+Note also the `--dtc-skip` option which uses the system device-tree compiler to
+avoid needing to build it for each board. This can save 10-20% of build time.
+An alternative is to set DTC=/path/to/dtc when running buildman.
 
 Checking configuration
 ----------------------
@@ -1108,6 +1123,30 @@ The -U option uses the u-boot.env files which are produced by a build.
 Internally, buildman writes out an out-env file into the build directory for
 later comparison.
 
+defconfig fragments
+-------------------
+
+Buildman provides some initial support for configuration fragments. It can scan
+these when present in defconfig files and handle the resuiting Kconfig
+correctly. Thus it is possible to build a board which has a ``#include`` in the
+defconfig file.
+
+For now, Buildman simply includes the files to produce a single output file,
+using the C preprocessor. It does not call the ``merge_config.sh`` script. The
+redefined/redundant logic in that script could fairly easily be repeated in
+Buildman, to detect potential problems. For now it is not clear that this is
+useful.
+
+To specify the C preprocessor to use, set the ``CPP`` environment variable. The
+default is ``cpp``.
+
+Note that Buildman does not support adding fragments to existing boards, e.g.
+like::
+
+    make qemu_riscv64_defconfig acpi.config
+
+This is partly because there is no way for Buildman to know which fragments are
+valid on which boards.
 
 Building with clang
 -------------------
@@ -1284,6 +1323,11 @@ perhaps due to a failure of a tool that it calls. You might see the output, but
 then buildman hangs. Failing to handle any eventuality is a bug in buildman and
 should be reported. But you can use -T0 to disable threading and hopefully
 figure out the root cause of the build failure.
+
+For situations where buildman is invoked from multiple running processes, it is
+sometimes useful to have buildman wait until the others have finished. Use the
+--process-limit option for this: --process-limit 1 will allow only one buildman
+to process jobs at a time.
 
 Build summary
 -------------

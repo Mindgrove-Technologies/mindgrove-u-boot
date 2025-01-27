@@ -41,7 +41,7 @@ optional_header:
 	.byte	0x02				/* MajorLinkerVersion */
 	.byte	0x14				/* MinorLinkerVersion */
 	.long	_etext - _start			/* SizeOfCode */
-	.long	0				/* SizeOfInitializedData */
+	.long	_data_size			/* SizeOfInitializedData */
 	.long	0				/* SizeOfUninitializedData */
 	.long	_start - ImageBase		/* AddressOfEntryPoint */
 	.long	_start - ImageBase		/* BaseOfCode */
@@ -66,7 +66,11 @@ extra_header_fields:
 	.long	_start - ImageBase		/* SizeOfHeaders */
 	.long	0				/* CheckSum */
 	.short	IMAGE_SUBSYSTEM_EFI_APPLICATION /* Subsystem */
+#if CONFIG_VENDOR_EFI
 	.short	0				/* DllCharacteristics */
+#else
+	.short	IMAGE_DLLCHARACTERISTICS_NX_COMPAT
+#endif
 	.quad	0				/* SizeOfStackReserve */
 	.quad	0				/* SizeOfStackCommit */
 	.quad	0				/* SizeOfHeapReserve */

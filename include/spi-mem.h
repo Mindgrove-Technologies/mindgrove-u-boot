@@ -11,6 +11,8 @@
 #ifndef __UBOOT_SPI_MEM_H
 #define __UBOOT_SPI_MEM_H
 
+#include <linux/errno.h>
+
 struct udevice;
 
 #define SPI_MEM_OP_CMD(__opcode, __buswidth)			\
@@ -326,9 +328,6 @@ bool spi_mem_default_supports_op(struct spi_slave *slave,
 				 const struct spi_mem_op *op);
 
 int spi_mem_exec_op(struct spi_slave *slave, const struct spi_mem_op *op);
-
-bool spi_mem_default_supports_op(struct spi_slave *mem,
-				 const struct spi_mem_op *op);
 
 struct spi_mem_dirmap_desc *
 spi_mem_dirmap_create(struct spi_slave *mem,

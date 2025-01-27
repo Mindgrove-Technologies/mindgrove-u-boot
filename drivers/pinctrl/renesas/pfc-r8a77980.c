@@ -12,7 +12,6 @@
  * Copyright (C) 2015 Renesas Electronics Corporation
  */
 
-#include <common.h>
 #include <dm.h>
 #include <errno.h>
 #include <dm/pinctrl.h>
@@ -21,10 +20,10 @@
 #include "sh_pfc.h"
 
 #define CPU_ALL_GP(fn, sfx)	\
-	PORT_GP_CFG_22(0, fn, sfx, SH_PFC_PIN_CFG_IO_VOLTAGE | SH_PFC_PIN_CFG_PULL_UP_DOWN),	\
+	PORT_GP_CFG_22(0, fn, sfx, SH_PFC_PIN_CFG_IO_VOLTAGE_18_33 | SH_PFC_PIN_CFG_PULL_UP_DOWN),	\
 	PORT_GP_CFG_28(1, fn, sfx, SH_PFC_PIN_CFG_PULL_UP_DOWN),	\
-	PORT_GP_CFG_30(2, fn, sfx, SH_PFC_PIN_CFG_IO_VOLTAGE | SH_PFC_PIN_CFG_PULL_UP_DOWN),	\
-	PORT_GP_CFG_17(3, fn, sfx, SH_PFC_PIN_CFG_IO_VOLTAGE | SH_PFC_PIN_CFG_PULL_UP_DOWN), \
+	PORT_GP_CFG_30(2, fn, sfx, SH_PFC_PIN_CFG_IO_VOLTAGE_18_33 | SH_PFC_PIN_CFG_PULL_UP_DOWN),	\
+	PORT_GP_CFG_17(3, fn, sfx, SH_PFC_PIN_CFG_IO_VOLTAGE_18_33 | SH_PFC_PIN_CFG_PULL_UP_DOWN), \
 	PORT_GP_CFG_25(4, fn, sfx, SH_PFC_PIN_CFG_PULL_UP_DOWN),	\
 	PORT_GP_CFG_15(5, fn, sfx, SH_PFC_PIN_CFG_PULL_UP_DOWN)
 
@@ -37,7 +36,9 @@
 	PIN_NOGP_CFG(EXTALR, "EXTALR", fn, SH_PFC_PIN_CFG_PULL_UP_DOWN),	\
 	PIN_NOGP_CFG(FSCLKST, "FSCLKST", fn, SH_PFC_PIN_CFG_PULL_UP_DOWN),	\
 	PIN_NOGP_CFG(FSCLKST_N, "FSCLKST#", fn, SH_PFC_PIN_CFG_PULL_UP_DOWN),	\
-	PIN_NOGP_CFG(PRESETOUT_N, "PRESETOUT#", fn, SH_PFC_PIN_CFG_PULL_UP_DOWN)
+	PIN_NOGP_CFG(PRESETOUT_N, "PRESETOUT#", fn, SH_PFC_PIN_CFG_PULL_UP_DOWN), \
+	PIN_NOGP_CFG(VDDQ_AVB, "VDDQ_AVB", fn, SH_PFC_PIN_CFG_IO_VOLTAGE_25_33), \
+	PIN_NOGP_CFG(VDDQ_GE, "VDDQ_GE", fn, SH_PFC_PIN_CFG_IO_VOLTAGE_25_33)
 
 /*
  * F_() : just information
@@ -99,7 +100,7 @@
 #define GPSR1_0		F_(IRQ0,		IP2_27_24)
 
 /* GPSR2 */
-#define GPSR2_29	F_(FSO_TOE_N,  		IP10_19_16)
+#define GPSR2_29	F_(FSO_TOE_N,		IP10_19_16)
 #define GPSR2_28	F_(FSO_CFE_1_N,		IP10_15_12)
 #define GPSR2_27	F_(FSO_CFE_0_N,		IP10_11_8)
 #define GPSR2_26	F_(SDA3,		IP10_7_4)
@@ -193,7 +194,6 @@
 #define GPSR5_1		FM(QSPI0_MOSI_IO0)
 #define GPSR5_0		FM(QSPI0_SPCLK)
 
-
 /* IPSRx */		/* 0 */				/* 1 */			/* 2 */			/* 3 */		/* 4 */		/* 5 */		/* 6 - F */
 #define IP0_3_0		FM(DU_DR2)			FM(SCK4)		FM(GETHER_RMII_CRS_DV)	FM(A0)		F_(0, 0)	F_(0, 0)	F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0)
 #define IP0_7_4		FM(DU_DR3)			FM(RX4)			FM(GETHER_RMII_RX_ER)	FM(A1)		F_(0, 0)	F_(0, 0)	F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0)
@@ -264,11 +264,11 @@
 #define IP8_11_8	FM(CANFD0_RX_A)			FM(RXDA_EXTFXR)		FM(PWM1_B)		FM(DU_CDE)	F_(0, 0)	F_(0, 0)	F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0)
 #define IP8_15_12	FM(CANFD1_TX)			FM(FXR_TXDB)		FM(PWM2_B)		FM(TCLK1_B)	FM(TX1_B)	F_(0, 0)	F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0)
 #define IP8_19_16	FM(CANFD1_RX)			FM(RXDB_EXTFXR)		FM(PWM3_B)		FM(TCLK2_B)	FM(RX1_B)	F_(0, 0)	F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0)
-#define IP8_23_20	FM(CANFD_CLK_A) 		FM(CLK_EXTFXR)		FM(PWM4_B)		FM(SPEEDIN_B)	FM(SCIF_CLK_B)	F_(0, 0)	F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0)
+#define IP8_23_20	FM(CANFD_CLK_A)			FM(CLK_EXTFXR)		FM(PWM4_B)		FM(SPEEDIN_B)	FM(SCIF_CLK_B)	F_(0, 0)	F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0)
 #define IP8_27_24	FM(DIGRF_CLKIN)			FM(DIGRF_CLKEN_IN)	F_(0, 0)		F_(0, 0)	F_(0, 0)	F_(0, 0)	F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0)
 #define IP8_31_28	FM(DIGRF_CLKOUT)		FM(DIGRF_CLKEN_OUT)	F_(0, 0)		F_(0, 0)	F_(0, 0)	F_(0, 0)	F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0)
 #define IP9_3_0		FM(IRQ4)			F_(0, 0)		F_(0, 0)		FM(VI0_DATA12)	F_(0, 0)	F_(0, 0)	F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0)
-#define IP9_7_4 	FM(IRQ5)			F_(0, 0)		F_(0, 0)		FM(VI0_DATA13)	F_(0, 0)	F_(0, 0)	F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0)
+#define IP9_7_4		FM(IRQ5)			F_(0, 0)		F_(0, 0)		FM(VI0_DATA13)	F_(0, 0)	F_(0, 0)	F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0)
 #define IP9_11_8	FM(MSIOF0_RXD)			FM(DU_DR0)		F_(0, 0)		FM(VI0_DATA14)	F_(0, 0)	F_(0, 0)	F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0)
 #define IP9_15_12	FM(MSIOF0_TXD)			FM(DU_DR1)		F_(0, 0)		FM(VI0_DATA15)	F_(0, 0)	F_(0, 0)	F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0)
 #define IP9_19_16	FM(MSIOF0_SCK)			FM(DU_DG0)		F_(0, 0)		FM(VI0_DATA16)	F_(0, 0)	F_(0, 0)	F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0) F_(0, 0)
@@ -929,6 +929,7 @@ static const unsigned int avb_avtp_match_mux[] = {
 	AVB_AVTP_MATCH_MARK,
 };
 
+#ifdef CONFIG_PINCTRL_PFC_FULL
 /* - CANFD0 ----------------------------------------------------------------- */
 static const unsigned int canfd0_data_a_pins[] = {
 	/* CANFD0_TX, CANFD0_RX */
@@ -1046,6 +1047,7 @@ static const unsigned int du_disp_pins[] = {
 static const unsigned int du_disp_mux[] = {
 	DU_DISP_MARK,
 };
+#endif
 
 /* - GETHER ----------------------------------------------------------------- */
 static const unsigned int gether_link_a_pins[] = {
@@ -1319,6 +1321,7 @@ static const unsigned int i2c5_mux[] = {
 	SDA5_MARK, SCL5_MARK,
 };
 
+#ifdef CONFIG_PINCTRL_PFC_FULL
 /* - INTC-EX ---------------------------------------------------------------- */
 static const unsigned int intc_ex_irq0_pins[] = {
 	/* IRQ0 */
@@ -1362,6 +1365,7 @@ static const unsigned int intc_ex_irq5_pins[] = {
 static const unsigned int intc_ex_irq5_mux[] = {
 	IRQ5_MARK,
 };
+#endif
 
 /* - MMC -------------------------------------------------------------------- */
 static const unsigned int mmc_data_pins[] = {
@@ -1406,6 +1410,7 @@ static const unsigned int mmc_ds_mux[] = {
 	MMC_DS_MARK,
 };
 
+#ifdef CONFIG_PINCTRL_PFC_FULL
 /* - MSIOF0 ----------------------------------------------------------------- */
 static const unsigned int msiof0_clk_pins[] = {
 	/* MSIOF0_SCK */
@@ -1661,6 +1666,7 @@ static const unsigned int pwm4_b_pins[] = {
 static const unsigned int pwm4_b_mux[] = {
 	PWM4_B_MARK,
 };
+#endif
 
 /* - QSPI0 ------------------------------------------------------------------ */
 static const unsigned int qspi0_ctrl_pins[] = {
@@ -1907,6 +1913,7 @@ static const unsigned int tpu_to3_mux[] = {
 	TPU0TO3_MARK,
 };
 
+#ifdef CONFIG_PINCTRL_PFC_FULL
 /* - VIN0 ------------------------------------------------------------------- */
 static const unsigned int vin0_data_pins[] = {
 	RCAR_GP_PIN(2, 4), RCAR_GP_PIN(2, 5),
@@ -2032,6 +2039,7 @@ static const unsigned int vin1_clk_pins[] = {
 static const unsigned int vin1_clk_mux[] = {
 	VI1_CLK_MARK,
 };
+#endif
 
 static const struct sh_pfc_pin_group pinmux_groups[] = {
 	SH_PFC_PIN_GROUP(avb_link),
@@ -2043,6 +2051,7 @@ static const struct sh_pfc_pin_group pinmux_groups[] = {
 	SH_PFC_PIN_GROUP(avb_avtp_pps),
 	SH_PFC_PIN_GROUP(avb_avtp_capture),
 	SH_PFC_PIN_GROUP(avb_avtp_match),
+#ifdef CONFIG_PINCTRL_PFC_FULL
 	SH_PFC_PIN_GROUP(canfd0_data_a),
 	SH_PFC_PIN_GROUP(canfd0_data_b),
 	SH_PFC_PIN_GROUP(canfd1_data),
@@ -2055,6 +2064,7 @@ static const struct sh_pfc_pin_group pinmux_groups[] = {
 	SH_PFC_PIN_GROUP(du_oddf),
 	SH_PFC_PIN_GROUP(du_cde),
 	SH_PFC_PIN_GROUP(du_disp),
+#endif
 	SH_PFC_PIN_GROUP(gether_link_a),
 	SH_PFC_PIN_GROUP(gether_phy_int_a),
 	SH_PFC_PIN_GROUP(gether_mdio_a),
@@ -2087,12 +2097,14 @@ static const struct sh_pfc_pin_group pinmux_groups[] = {
 	SH_PFC_PIN_GROUP(i2c3),
 	SH_PFC_PIN_GROUP(i2c4),
 	SH_PFC_PIN_GROUP(i2c5),
+#ifdef CONFIG_PINCTRL_PFC_FULL
 	SH_PFC_PIN_GROUP(intc_ex_irq0),
 	SH_PFC_PIN_GROUP(intc_ex_irq1),
 	SH_PFC_PIN_GROUP(intc_ex_irq2),
 	SH_PFC_PIN_GROUP(intc_ex_irq3),
 	SH_PFC_PIN_GROUP(intc_ex_irq4),
 	SH_PFC_PIN_GROUP(intc_ex_irq5),
+#endif
 	BUS_DATA_PIN_GROUP(mmc_data, 1),
 	BUS_DATA_PIN_GROUP(mmc_data, 4),
 	BUS_DATA_PIN_GROUP(mmc_data, 8),
@@ -2100,6 +2112,7 @@ static const struct sh_pfc_pin_group pinmux_groups[] = {
 	SH_PFC_PIN_GROUP(mmc_cd),
 	SH_PFC_PIN_GROUP(mmc_wp),
 	SH_PFC_PIN_GROUP(mmc_ds),
+#ifdef CONFIG_PINCTRL_PFC_FULL
 	SH_PFC_PIN_GROUP(msiof0_clk),
 	SH_PFC_PIN_GROUP(msiof0_sync),
 	SH_PFC_PIN_GROUP(msiof0_ss1),
@@ -2134,6 +2147,7 @@ static const struct sh_pfc_pin_group pinmux_groups[] = {
 	SH_PFC_PIN_GROUP(pwm3_b),
 	SH_PFC_PIN_GROUP(pwm4_a),
 	SH_PFC_PIN_GROUP(pwm4_b),
+#endif
 	SH_PFC_PIN_GROUP(qspi0_ctrl),
 	SH_PFC_PIN_GROUP_SUBSET(qspi0_data2, rpc_data, 0, 2),
 	SH_PFC_PIN_GROUP_SUBSET(qspi0_data4, rpc_data, 0, 4),
@@ -2170,6 +2184,7 @@ static const struct sh_pfc_pin_group pinmux_groups[] = {
 	SH_PFC_PIN_GROUP(tpu_to1),
 	SH_PFC_PIN_GROUP(tpu_to2),
 	SH_PFC_PIN_GROUP(tpu_to3),
+#ifdef CONFIG_PINCTRL_PFC_FULL
 	BUS_DATA_PIN_GROUP(vin0_data, 8),
 	BUS_DATA_PIN_GROUP(vin0_data, 10),
 	BUS_DATA_PIN_GROUP(vin0_data, 12),
@@ -2188,6 +2203,7 @@ static const struct sh_pfc_pin_group pinmux_groups[] = {
 	SH_PFC_PIN_GROUP(vin1_field),
 	SH_PFC_PIN_GROUP(vin1_clkenb),
 	SH_PFC_PIN_GROUP(vin1_clk),
+#endif
 };
 
 static const char * const avb_groups[] = {
@@ -2202,6 +2218,7 @@ static const char * const avb_groups[] = {
 	"avb_avtp_match",
 };
 
+#ifdef CONFIG_PINCTRL_PFC_FULL
 static const char * const canfd0_groups[] = {
 	"canfd0_data_a",
 	"canfd0_data_b",
@@ -2225,6 +2242,7 @@ static const char * const du_groups[] = {
 	"du_cde",
 	"du_disp",
 };
+#endif
 
 static const char * const gether_groups[] = {
 	"gether_link_a",
@@ -2291,6 +2309,7 @@ static const char * const i2c5_groups[] = {
 	"i2c5",
 };
 
+#ifdef CONFIG_PINCTRL_PFC_FULL
 static const char * const intc_ex_groups[] = {
 	"intc_ex_irq0",
 	"intc_ex_irq1",
@@ -2299,6 +2318,7 @@ static const char * const intc_ex_groups[] = {
 	"intc_ex_irq4",
 	"intc_ex_irq5",
 };
+#endif
 
 static const char * const mmc_groups[] = {
 	"mmc_data1",
@@ -2310,6 +2330,7 @@ static const char * const mmc_groups[] = {
 	"mmc_ds",
 };
 
+#ifdef CONFIG_PINCTRL_PFC_FULL
 static const char * const msiof0_groups[] = {
 	"msiof0_clk",
 	"msiof0_sync",
@@ -2370,6 +2391,7 @@ static const char * const pwm4_groups[] = {
 	"pwm4_a",
 	"pwm4_b",
 };
+#endif
 
 static const char * const qspi0_groups[] = {
 	"qspi0_ctrl",
@@ -2437,6 +2459,7 @@ static const char * const tpu_groups[] = {
 	"tpu_to3",
 };
 
+#ifdef CONFIG_PINCTRL_PFC_FULL
 static const char * const vin0_groups[] = {
 	"vin0_data8",
 	"vin0_data10",
@@ -2460,13 +2483,16 @@ static const char * const vin1_groups[] = {
 	"vin1_clkenb",
 	"vin1_clk",
 };
+#endif
 
 static const struct sh_pfc_function pinmux_functions[] = {
 	SH_PFC_FUNCTION(avb),
+#ifdef CONFIG_PINCTRL_PFC_FULL
 	SH_PFC_FUNCTION(canfd0),
 	SH_PFC_FUNCTION(canfd1),
 	SH_PFC_FUNCTION(canfd_clk),
 	SH_PFC_FUNCTION(du),
+#endif
 	SH_PFC_FUNCTION(gether),
 	SH_PFC_FUNCTION(hscif0),
 	SH_PFC_FUNCTION(hscif1),
@@ -2478,8 +2504,11 @@ static const struct sh_pfc_function pinmux_functions[] = {
 	SH_PFC_FUNCTION(i2c3),
 	SH_PFC_FUNCTION(i2c4),
 	SH_PFC_FUNCTION(i2c5),
+#ifdef CONFIG_PINCTRL_PFC_FULL
 	SH_PFC_FUNCTION(intc_ex),
+#endif
 	SH_PFC_FUNCTION(mmc),
+#ifdef CONFIG_PINCTRL_PFC_FULL
 	SH_PFC_FUNCTION(msiof0),
 	SH_PFC_FUNCTION(msiof1),
 	SH_PFC_FUNCTION(msiof2),
@@ -2489,6 +2518,7 @@ static const struct sh_pfc_function pinmux_functions[] = {
 	SH_PFC_FUNCTION(pwm2),
 	SH_PFC_FUNCTION(pwm3),
 	SH_PFC_FUNCTION(pwm4),
+#endif
 	SH_PFC_FUNCTION(qspi0),
 	SH_PFC_FUNCTION(qspi1),
 	SH_PFC_FUNCTION(rpc),
@@ -2499,8 +2529,10 @@ static const struct sh_pfc_function pinmux_functions[] = {
 	SH_PFC_FUNCTION(scif_clk),
 	SH_PFC_FUNCTION(tmu),
 	SH_PFC_FUNCTION(tpu),
+#ifdef CONFIG_PINCTRL_PFC_FULL
 	SH_PFC_FUNCTION(vin0),
 	SH_PFC_FUNCTION(vin1),
+#endif
 };
 
 static const struct pinmux_cfg_reg pinmux_config_regs[] = {
@@ -2815,7 +2847,7 @@ static const struct pinmux_cfg_reg pinmux_config_regs[] = {
 		MOD_SEL0_1
 		MOD_SEL0_0 ))
 	},
-	{ },
+	{ /* sentinel */ }
 };
 
 enum ioctrl_regs {
@@ -2832,31 +2864,46 @@ static const struct pinmux_ioctrl_reg pinmux_ioctrl_regs[] = {
 	[POCCTRL2] = { 0xe6060388, },
 	[POCCTRL3] = { 0xe606038c, },
 	[TDSELCTRL] = { 0xe60603c0, },
-	{ /* sentinel */ },
+	{ /* sentinel */ }
 };
 
 static int r8a77980_pin_to_pocctrl(unsigned int pin, u32 *pocctrl)
 {
 	int bit = pin & 0x1f;
 
-	*pocctrl = pinmux_ioctrl_regs[POCCTRL0].reg;
-	if (pin >= RCAR_GP_PIN(0, 0) && pin <= RCAR_GP_PIN(0, 21))
+	switch (pin) {
+	case RCAR_GP_PIN(0, 0) ... RCAR_GP_PIN(0, 21):
+		*pocctrl = pinmux_ioctrl_regs[POCCTRL0].reg;
 		return bit;
-	else if (pin >= RCAR_GP_PIN(2, 0) && pin <= RCAR_GP_PIN(2, 9))
+
+	case RCAR_GP_PIN(2, 0) ... RCAR_GP_PIN(2, 9):
+		*pocctrl = pinmux_ioctrl_regs[POCCTRL0].reg;
 		return bit + 22;
 
-	*pocctrl = pinmux_ioctrl_regs[POCCTRL1].reg;
-	if (pin >= RCAR_GP_PIN(2, 10) && pin <= RCAR_GP_PIN(2, 16))
+	case RCAR_GP_PIN(2, 10) ... RCAR_GP_PIN(2, 16):
+		*pocctrl = pinmux_ioctrl_regs[POCCTRL1].reg;
 		return bit - 10;
-	if ((pin >= RCAR_GP_PIN(2, 17) && pin <= RCAR_GP_PIN(2, 24)) ||
-	    (pin >= RCAR_GP_PIN(3,  0) && pin <= RCAR_GP_PIN(3, 16)))
+
+	case RCAR_GP_PIN(2, 17) ... RCAR_GP_PIN(2, 24):
+	case RCAR_GP_PIN(3,  0) ... RCAR_GP_PIN(3, 16):
+		*pocctrl = pinmux_ioctrl_regs[POCCTRL1].reg;
 		return bit + 7;
 
-	*pocctrl = pinmux_ioctrl_regs[POCCTRL2].reg;
-	if (pin >= RCAR_GP_PIN(2, 25) && pin <= RCAR_GP_PIN(2, 29))
+	case RCAR_GP_PIN(2, 25) ... RCAR_GP_PIN(2, 29):
+		*pocctrl = pinmux_ioctrl_regs[POCCTRL2].reg;
 		return pin - 25;
 
-	return -EINVAL;
+	case PIN_VDDQ_AVB:
+		*pocctrl = pinmux_ioctrl_regs[POCCTRL3].reg;
+		return 0;
+
+	case PIN_VDDQ_GE:
+		*pocctrl = pinmux_ioctrl_regs[POCCTRL3].reg;
+		return 1;
+
+	default:
+		return -EINVAL;
+	}
 }
 
 static const struct pinmux_bias_reg pinmux_bias_regs[] = {

@@ -7,7 +7,9 @@
 #ifndef __bootflow_h
 #define __bootflow_h
 
+#include <alist.h>
 #include <bootdev.h>
+#include <image.h>
 #include <dm/ofnode_decl.h>
 #include <linux/list.h>
 
@@ -43,22 +45,23 @@ enum bootflow_state_t {
  *	and it is using the prior-stage FDT, which is the U-Boot control FDT.
  *	This is only possible with the EFI bootmeth (distro-efi) and only when
  *	CONFIG_OF_HAS_PRIOR_STAGE is enabled
+ * @BOOTFLOWF_STATIC_BUF: Indicates that @bflow->buf is statically set, rather
+ *	than being allocated by malloc().
+ * @BOOTFLOWF_USE_BUILTIN_FDT : Indicates that current bootflow uses built-in FDT
  */
 enum bootflow_flags_t {
 	BOOTFLOWF_USE_PRIOR_FDT	= 1 << 0,
+	BOOTFLOWF_STATIC_BUF	= 1 << 1,
+	BOOTFLOWF_USE_BUILTIN_FDT	= 1 << 2,
 };
 
 /**
  * struct bootflow - information about a bootflow
  *
- * This is connected into two separate linked lists:
+ * All bootflows are listed in bootstd's bootflow alist in struct bootstd_priv
  *
- *   bm_sibling - links all bootflows in the same bootdev
- *   glob_sibling - links all bootflows in all bootdevs
- *
- * @bm_node: Points to siblings in the same bootdev
- * @glob_node: Points to siblings in the global list (all bootdev)
- * @dev: Bootdev device which produced this bootflow
+ * @dev: Bootdev device which produced this bootflow, NULL for flows created by
+ *      BOOTMETHF_GLOBAL bootmeths
  * @blk: Block device which contains this bootflow, NULL if this is a network
  *	device or sandbox 'host' device
  * @part: Partition number (0 for whole device)
@@ -72,7 +75,7 @@ enum bootflow_flags_t {
  * @fname: Filename of bootflow file (allocated)
  * @logo: Logo to display for this bootflow (BMP format)
  * @logo_size: Size of the logo in bytes
- * @buf: Bootflow file contents (allocated)
+ * @buf: Bootflow file contents (allocated unless @flags & BOOTFLOWF_STATIC_BUF)
  * @size: Size of bootflow file in bytes
  * @err: Error number received (0 if OK)
  * @os_name: Name of the OS / distro being booted, or NULL if not known
@@ -83,10 +86,10 @@ enum bootflow_flags_t {
  * @flags: Flags for the bootflow (see enum bootflow_flags_t)
  * @cmdline: OS command line, or NULL if not known (allocated)
  * @x86_setup: Pointer to x86 setup block inside @buf, NULL if not present
+ * @bootmeth_priv: Private data for the bootmeth
+ * @images: List of loaded images (struct bootstd_img)
  */
 struct bootflow {
-	struct list_head bm_node;
-	struct list_head glob_node;
 	struct udevice *dev;
 	struct udevice *blk;
 	int part;
@@ -107,7 +110,46 @@ struct bootflow {
 	ulong fdt_addr;
 	int flags;
 	char *cmdline;
-	char *x86_setup;
+	void *x86_setup;
+	void *bootmeth_priv;
+	struct alist images;
+};
+
+/**
+ * bootflow_img_t: Supported image types
+ *
+ * This uses image_type_t for most types, but extends it
+ *
+ * @BFI_EXTLINUX_CFG: extlinux configuration-file
+ * @BFI_LOGO: logo image
+ * @BFI_EFI: EFI PE image
+ * @BFI_CMDLINE: OS command-line string
+ */
+enum bootflow_img_t {
+	BFI_FIRST = IH_TYPE_COUNT,
+	BFI_EXTLINUX_CFG = BFI_FIRST,
+	BFI_LOGO,
+	BFI_EFI,
+	BFI_CMDLINE,
+
+	BFI_COUNT,
+};
+
+/**
+ * struct bootflow_img - Information about an image which has been loaded
+ *
+ * This keeps track of a single, loaded image.
+ *
+ * @fname: Filename used to load the image (allocated)
+ * @type: Image type (IH_TYPE_...)
+ * @addr: Address to which the image was loaded, 0 if not yet loaded
+ * @size: Size of the image
+ */
+struct bootflow_img {
+	char *fname;
+	enum bootflow_img_t type;
+	ulong addr;
+	ulong size;
 };
 
 /**
@@ -126,6 +168,8 @@ struct bootflow {
  * this uclass (used with things like "mmc")
  * @BOOTFLOWIF_SINGLE_MEDIA: (internal) Scan one media device in the uclass (used
  * with things like "mmc1")
+ * @BOOTFLOWIF_SINGLE_PARTITION: (internal) Scan one partition in media device
+ * (used with things like "mmc1:3")
  */
 enum bootflow_iter_flags_t {
 	BOOTFLOWIF_FIXED		= 1 << 0,
@@ -141,6 +185,7 @@ enum bootflow_iter_flags_t {
 	BOOTFLOWIF_SKIP_GLOBAL		= 1 << 17,
 	BOOTFLOWIF_SINGLE_UCLASS	= 1 << 18,
 	BOOTFLOWIF_SINGLE_MEDIA		= 1 << 19,
+	BOOTFLOWIF_SINGLE_PARTITION	= 1 << 20,
 };
 
 /**
@@ -351,6 +396,17 @@ void bootflow_free(struct bootflow *bflow);
 int bootflow_boot(struct bootflow *bflow);
 
 /**
+ * bootflow_read_all() - Read all bootflow files
+ *
+ * Some bootmeths delay reading of large files until booting is requested. This
+ * causes those files to be read.
+ *
+ * @bflow: Bootflow to read
+ * Return: result of trying to read
+ */
+int bootflow_read_all(struct bootflow *bflow);
+
+/**
  * bootflow_run_boot() - Try to boot a bootflow
  *
  * @iter: Current iteration (or NULL if none). Used to disable a bootmeth if the
@@ -371,7 +427,10 @@ const char *bootflow_state_get_name(enum bootflow_state_t state);
 /**
  * bootflow_remove() - Remove a bootflow and free its memory
  *
- * This updates the linked lists containing the bootflow then frees it.
+ * This updates the 'global' linked list containing the bootflow, then frees it.
+ * It does not remove it from bootflows alist in struct bootstd_priv
+ *
+ * This does not free bflow itself, since this is assumed to be in an alist
  *
  * @bflow: Bootflow to remove
  */
@@ -385,6 +444,15 @@ void bootflow_remove(struct bootflow *bflow);
  * Return: 0 if OK, -ENOTSUPP if some other device is used (e.g. ethernet)
  */
 int bootflow_iter_check_blk(const struct bootflow_iter *iter);
+
+/**
+ * bootflow_iter_check_mmc() - Check that a bootflow uses a MMC device
+ *
+ * This checks the bootdev in the bootflow to make sure it uses a mmc device
+ *
+ * Return: 0 if OK, -ENOTSUPP if some other device is used (e.g. ethernet)
+ */
+int bootflow_iter_check_mmc(const struct bootflow_iter *iter);
 
 /**
  * bootflow_iter_check_sf() - Check that a bootflow uses SPI FLASH
@@ -537,5 +605,35 @@ int bootflow_cmdline_get_arg(struct bootflow *bflow, const char *arg,
  * Return: 0 if OK -ve on error
  */
 int bootflow_cmdline_auto(struct bootflow *bflow, const char *arg);
+
+/**
+ * bootflow_img_type_name() - Get the name for an image type
+ *
+ * @type: Type to check (either enum bootflow_img_t or enum image_type_t
+ * Return: Image name, or "unknown" if not known
+ */
+const char *bootflow_img_type_name(enum bootflow_img_t type);
+
+/**
+ * bootflow_img_add() - Add a new image to a bootflow
+ *
+ * @bflow: Bootflow to add to
+ * @fname: Image filename (will be allocated)
+ * @type: Image type
+ * @addr: Address the image was loaded to, or 0 if not loaded
+ * @size: Image size
+ * Return: pointer to the added image, or NULL if out of memory
+ */
+struct bootflow_img *bootflow_img_add(struct bootflow *bflow, const char *fname,
+				      enum bootflow_img_t type, ulong addr,
+				      ulong size);
+/**
+ * bootflow_get_seq() - Get the sequence number of a bootflow
+ *
+ * Bootflows are numbered by their position in the bootstd list.
+ *
+ * Return: Sequence number of bootflow (0 = first)
+ */
+int bootflow_get_seq(const struct bootflow *bflow);
 
 #endif

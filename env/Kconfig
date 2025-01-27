@@ -21,6 +21,19 @@ config ENV_SOURCE_FILE
 	  environment is assumed to come from the ad-hoc
 	  CFG_EXTRA_ENV_SETTINGS #define
 
+config ENV_CALLBACK_LIST_STATIC
+	string "Static callbacks list"
+	default ""
+	help
+	  The environment callbacks are associated with variables in a
+	  static list. Define this list in the following format:
+
+	  entry = variable_name[:callback_name]
+	  list = entry[,list]
+
+	  If the callback name is not specified, then the callback is deleted.
+	  Spaces are also allowed anywhere in the list.
+
 config SAVEENV
 	def_bool y if CMD_SAVEENV
 
@@ -47,7 +60,7 @@ config ENV_MIN_ENTRIES
 	  to store the environment settings.
 
 config ENV_MAX_ENTRIES
-	int "Maximumm number of entries in the environment hashtable"
+	int "Maximum number of entries in the environment hashtable"
 	default 512
 	help
 	  Maximum number of entries in the hash table that is used internally
@@ -312,7 +325,7 @@ config ENV_IS_IN_NVRAM
 
 config ENV_IS_IN_ONENAND
 	bool "Environment is in OneNAND"
-	depends on !CHAIN_OF_TRUST
+	depends on !CHAIN_OF_TRUST && CMD_ONENAND
 	help
 	  Define this if you want to put your local device's environment in
 	  OneNAND.
@@ -342,7 +355,7 @@ config ENV_IS_IN_REMOTE
 
 config ENV_IS_IN_SPI_FLASH
 	bool "Environment is in SPI flash"
-	depends on !CHAIN_OF_TRUST && SPI
+	depends on !CHAIN_OF_TRUST && (SPI_FLASH || DM_SPI_FLASH)
 	default y if ARMADA_XP
 	default y if INTEL_BAYTRAIL
 	default y if INTEL_BRASWELL
@@ -472,7 +485,7 @@ config ENV_FAT_DEVICE_AND_PART
 	string "Device and partition for where to store the environemt in FAT"
 	depends on ENV_IS_IN_FAT
 	default "0:1" if TI_COMMON_CMD_OPTIONS
-	default "0:auto" if ARCH_ZYNQ || ARCH_ZYNQMP || ARCH_VERSAL
+	default "0:auto" if ARCH_ZYNQ || ARCH_ZYNQMP || ARCH_VERSAL || ARCH_VERSAL_NET
 	default ":auto" if ARCH_SUNXI
 	default "0" if ARCH_AT91
 	help
@@ -570,23 +583,33 @@ config ENV_OFFSET
 	default 0xF0000 if ARCH_SUNXI
 	default 0xE0000 if ARCH_ZYNQ
 	default 0x1E00000 if ARCH_ZYNQMP
-	default 0x7F40000 if ARCH_VERSAL || ARCH_VERSAL_NET
-	default 0 if ARC
+	default 0x7F40000 if ARCH_VERSAL || ARCH_VERSAL_NET || ARCH_VERSAL2
+	default 0x0 if ARC
 	default 0x140000 if ARCH_AT91
 	default 0x260000 if ARCH_OMAP2PLUS
 	default 0x1080000 if MICROBLAZE && ENV_IS_IN_SPI_FLASH
 	help
-	  Offset from the start of the device (or partition)
+	  Offset from the start of the device (or partition).
+
+	  This offset may be interpreted differently depending on the chosen
+	  ENV_IS_IN_* options. For example, for ENV_IS_IN_MMC=y, this offset may
+	  be negative to indicate an offset backwards from the end of the
+	  partition. See the relevant help messages for more details.
 
 config ENV_OFFSET_REDUND
 	hex "Redundant environment offset"
 	depends on (ENV_IS_IN_EEPROM || ENV_IS_IN_MMC || ENV_IS_IN_NAND || \
 		    ENV_IS_IN_SPI_FLASH) && SYS_REDUNDAND_ENVIRONMENT
 	default 0x10C0000 if MICROBLAZE
-	default 0
+	default 0x0
 	help
 	  Offset from the start of the device (or partition) of the redundant
 	  environment location.
+
+	  This offset may be interpreted differently depending on the chosen
+	  ENV_IS_IN_* options. For example, for ENV_IS_IN_MMC=y, this offset may
+	  be negative to indicate an offset backwards from the end of the
+	  partition. See the relevant help messages for more details.
 
 config ENV_SIZE
 	hex "Environment Size"
@@ -595,7 +618,7 @@ config ENV_SIZE
 	default 0x10000 if ARCH_SUNXI
 	default 0x8000 if ARCH_ROCKCHIP && ENV_IS_IN_MMC
 	default 0x2000 if ARCH_ROCKCHIP && ENV_IS_IN_SPI_FLASH
-	default 0x8000 if ARCH_ZYNQMP || ARCH_VERSAL || ARCH_VERSAL_NET
+	default 0x8000 if ARCH_ZYNQMP || ARCH_VERSAL || ARCH_VERSAL_NET || ARCH_VERSAL2
 	default 0x4000 if ARC
 	default 0x1f000
 	help
@@ -605,7 +628,7 @@ config ENV_SECT_SIZE
 	hex "Environment Sector-Size"
 	depends on ENV_IS_IN_FLASH || ENV_IS_IN_SPI_FLASH
 	default 0x2000 if ARCH_ROCKCHIP
-	default 0x40000 if ARCH_ZYNQMP || ARCH_VERSAL || ARCH_VERSAL_NET
+	default 0x40000 if ARCH_ZYNQMP || ARCH_VERSAL || ARCH_VERSAL_NET || ARCH_VERSAL2
 	default 0x20000 if ARCH_ZYNQ || ARCH_OMAP2PLUS || ARCH_AT91
 	default 0x20000 if MICROBLAZE && ENV_IS_IN_SPI_FLASH
 	default 0x10000 if ARCH_SUNXI && ENV_IS_IN_SPI_FLASH
@@ -645,7 +668,7 @@ config SYS_RELOC_GD_ENV_ADDR
 
 config SYS_MMC_ENV_DEV
 	int "mmc device number"
-	depends on ENV_IS_IN_MMC || ENV_IS_IN_FAT || SYS_LS_PPA_FW_IN_MMC || \
+	depends on ENV_IS_IN_MMC || ENV_IS_IN_FAT || ENV_IS_IN_EXT4 || \
 		CMD_MVEBU_BUBT || FMAN_ENET || QE || PHY_CORTINA
 	default 0
 	help

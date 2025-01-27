@@ -8,7 +8,6 @@
 
 #define LOG_CATEGORY	LOGC_EXPO
 
-#include <common.h>
 #include <dm.h>
 #include <expo.h>
 #include <malloc.h>
@@ -30,6 +29,7 @@ int expo_new(const char *name, void *priv, struct expo **expp)
 	exp->priv = priv;
 	INIT_LIST_HEAD(&exp->scene_head);
 	INIT_LIST_HEAD(&exp->str_head);
+	exp->next_id = EXPOID_BASE_ID;
 
 	*expp = exp;
 
@@ -190,10 +190,12 @@ int expo_render(struct expo *exp)
 	struct udevice *dev = exp->display;
 	struct video_priv *vid_priv = dev_get_uclass_priv(dev);
 	struct scene *scn = NULL;
+	enum colour_idx back;
 	u32 colour;
 	int ret;
 
-	colour = video_index_to_colour(vid_priv, VID_WHITE);
+	back = CONFIG_IS_ENABLED(SYS_WHITE_ON_BLACK) ? VID_BLACK : VID_WHITE;
+	colour = video_index_to_colour(vid_priv, back);
 	ret = video_fill(dev, colour);
 	if (ret)
 		return log_msg_ret("fill", ret);
@@ -257,11 +259,28 @@ int expo_apply_theme(struct expo *exp, ofnode node)
 	ofnode_read_u32(node, "font-size", &theme->font_size);
 	ofnode_read_u32(node, "menu-inset", &theme->menu_inset);
 	ofnode_read_u32(node, "menuitem-gap-y", &theme->menuitem_gap_y);
+	ofnode_read_u32(node, "menu-title-margin-x",
+			&theme->menu_title_margin_x);
 
 	list_for_each_entry(scn, &exp->scene_head, sibling) {
 		ret = scene_apply_theme(scn, theme);
 		if (ret)
 			return log_msg_ret("app", ret);
+	}
+
+	return 0;
+}
+
+int expo_iter_scene_objs(struct expo *exp, expo_scene_obj_iterator iter,
+			 void *priv)
+{
+	struct scene *scn;
+	int ret;
+
+	list_for_each_entry(scn, &exp->scene_head, sibling) {
+		ret = scene_iter_objs(scn, iter, priv);
+		if (ret)
+			return log_msg_ret("wr", ret);
 	}
 
 	return 0;

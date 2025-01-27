@@ -10,7 +10,6 @@
  */
 
 #include <clk.h>
-#include <common.h>
 #include <dm.h>
 #include <dm/device_compat.h>
 #include <fdtdec.h>
@@ -18,6 +17,7 @@
 #include <asm/global_data.h>
 #include <asm/gpio.h>
 #include <spi.h>
+#include <linux/printk.h>
 
 #define SSP_CR0		0x000
 #define SSP_CR1		0x004

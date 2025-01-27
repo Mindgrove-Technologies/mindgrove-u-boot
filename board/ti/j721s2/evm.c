@@ -2,12 +2,11 @@
 /*
  * Board specific initialization for J721S2 EVM
  *
- * Copyright (C) 2021 Texas Instruments Incorporated - http://www.ti.com/
+ * Copyright (C) 2021 Texas Instruments Incorporated - https://www.ti.com/
  *	David Huang <d-huang@ti.com>
  *
  */
 
-#include <common.h>
 #include <env.h>
 #include <fdt_support.h>
 #include <generic-phy.h>
@@ -22,8 +21,10 @@
 #include <dm.h>
 #include <dm/uclass-internal.h>
 #include <dm/root.h>
+#include <asm/arch/k3-ddr.h>
 
 #include "../common/board_detect.h"
+#include "../common/fdt_ops.h"
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -32,18 +33,7 @@ int board_init(void)
 	return 0;
 }
 
-int dram_init(void)
-{
-#ifdef CONFIG_PHYS_64BIT
-	gd->ram_size = 0x100000000;
-#else
-	gd->ram_size = 0x80000000;
-#endif
-
-	return 0;
-}
-
-phys_size_t board_get_usable_ram_top(phys_size_t total_size)
+phys_addr_t board_get_usable_ram_top(phys_size_t total_size)
 {
 #ifdef CONFIG_PHYS_64BIT
 	/* Limit RAM used by U-Boot to the DDR low region */
@@ -54,22 +44,17 @@ phys_size_t board_get_usable_ram_top(phys_size_t total_size)
 	return gd->ram_top;
 }
 
-int dram_init_banksize(void)
+#if defined(CONFIG_XPL_BUILD)
+void spl_perform_fixups(struct spl_image_info *spl_image)
 {
-	/* Bank 0 declares the memory available in the DDR low region */
-	gd->bd->bi_dram[0].start = CFG_SYS_SDRAM_BASE;
-	gd->bd->bi_dram[0].size = 0x7fffffff;
-	gd->ram_size = 0x80000000;
-
-#ifdef CONFIG_PHYS_64BIT
-	/* Bank 1 declares the memory available in the DDR high region */
-	gd->bd->bi_dram[1].start = CFG_SYS_SDRAM_BASE1;
-	gd->bd->bi_dram[1].size = 0x37fffffff;
-	gd->ram_size = 0x400000000;
-#endif
-
-	return 0;
+	if (IS_ENABLED(CONFIG_K3_DDRSS)) {
+		if (IS_ENABLED(CONFIG_K3_INLINE_ECC))
+			fixup_ddr_driver_for_ecc(spl_image);
+	} else {
+		fixup_memory_node(spl_image);
+	}
 }
+#endif
 
 #ifdef CONFIG_TI_I2C_BOARD_DETECT
 /*
@@ -115,6 +100,12 @@ int checkboard(void)
 	return 0;
 }
 
+static struct ti_fdt_map ti_j721s2_evm_fdt_map[] = {
+	{"j721s2", "ti/k3-j721s2-common-proc-board.dtb"},
+	{"am68-sk", "ti/k3-am68-sk-base-board.dtb"},
+	{ /* Sentinel. */ }
+};
+
 static void setup_board_eeprom_env(void)
 {
 	char *name = "j721s2";
@@ -132,6 +123,7 @@ static void setup_board_eeprom_env(void)
 
 invalid_eeprom:
 	set_board_info_env_am6(name);
+	ti_set_fdt_env(name, ti_j721s2_evm_fdt_map);
 }
 
 static void setup_serial(void)
@@ -232,7 +224,7 @@ static int probe_daughtercards(void)
 		printf("Detected: %s rev %s\n", ep.name, ep.version);
 		daughter_card_detect_flags[i] = true;
 
-		if (!IS_ENABLED(CONFIG_SPL_BUILD)) {
+		if (!IS_ENABLED(CONFIG_XPL_BUILD)) {
 			int j;
 			/*
 			 * Populate any MAC addresses from daughtercard into the U-Boot
@@ -250,7 +242,7 @@ static int probe_daughtercards(void)
 		}
 	}
 
-	if (!IS_ENABLED(CONFIG_SPL_BUILD)) {
+	if (!IS_ENABLED(CONFIG_XPL_BUILD)) {
 		char name_overlays[1024] = { 0 };
 
 		for (i = 0; i < ARRAY_SIZE(ext_cards); i++) {
@@ -319,4 +311,27 @@ int board_late_init(void)
 
 void spl_board_init(void)
 {
+	struct udevice *dev;
+	int ret;
+
+	if (IS_ENABLED(CONFIG_ESM_K3)) {
+		const char * const esms[] = {"esm@700000", "esm@40800000", "esm@42080000"};
+
+		for (int i = 0; i < ARRAY_SIZE(esms); ++i) {
+			ret = uclass_get_device_by_name(UCLASS_MISC, esms[i],
+							&dev);
+			if (ret) {
+				printf("MISC init for %s failed: %d\n", esms[i], ret);
+				break;
+			}
+		}
+	}
+
+	if (IS_ENABLED(CONFIG_ESM_PMIC) && ret == 0) {
+		ret = uclass_get_device_by_driver(UCLASS_MISC,
+						  DM_DRIVER_GET(pmic_esm),
+						  &dev);
+		if (ret)
+			printf("ESM PMIC init failed: %d\n", ret);
+	}
 }

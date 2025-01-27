@@ -17,6 +17,11 @@
 		stdout-path = &uart0;
 		tick-timer = &timer0;
 	};
+
+	memory@40000000 {
+		device_type = "memory";
+		reg = <0x40000000 0x10000000>;
+	};
 };
 
 &uart0 {
@@ -32,12 +37,12 @@
 &eth {
 	status = "okay";
 	mediatek,gmac-id = <0>;
-	phy-mode = "sgmii";
+	phy-mode = "2500base-x";
 	mediatek,switch = "mt7531";
 	reset-gpios = <&gpio 39 GPIO_ACTIVE_HIGH>;
 
 	fixed-link {
-		speed = <1000>;
+		speed = <2500>;
 		full-duplex;
 	};
 };
@@ -118,6 +123,14 @@
 			groups = "pwm0_1", "pwm1_0", "pwm2";
 		};
 	};
+
+	/* pin13 as pwm0, pin15 as pwm1, pin7 as pwm2 */
+	three_pwm_pins_1: three-pwm-pins {
+		mux {
+			function = "pwm";
+			groups = "pwm0_0", "pwm1_1", "pwm2";
+		};
+	};
 };
 
 &spi0 {
@@ -138,6 +151,8 @@
 		compatible = "spi-nand";
 		reg = <0>;
 		spi-max-frequency = <52000000>;
+		spi-rx-bus-width = <4>;
+		spi-tx-bus-width = <4>;
 	};
 };
 
@@ -159,6 +174,8 @@
 		compatible = "jedec,spi-nor";
 		reg = <0>;
 		spi-max-frequency = <52000000>;
+		spi-rx-bus-width = <4>;
+		spi-tx-bus-width = <4>;
 	};
 };
 

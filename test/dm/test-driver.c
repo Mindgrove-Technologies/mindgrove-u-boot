@@ -6,7 +6,6 @@
  * Pavel Herrmann <morpheus.ibis@gmail.com>
  */
 
-#include <common.h>
 #include <dm.h>
 #include <errno.h>
 #include <log.h>
@@ -36,7 +35,7 @@ static const struct test_ops test_ops = {
 
 static int test_bind(struct udevice *dev)
 {
-	struct unit_test_state *uts = test_get_state();
+	struct unit_test_state *uts = ut_get_state();
 
 	/* Private data should not be allocated */
 	ut_assert(!dev_get_priv(dev));
@@ -47,7 +46,7 @@ static int test_bind(struct udevice *dev)
 
 static int test_probe(struct udevice *dev)
 {
-	struct unit_test_state *uts = test_get_state();
+	struct unit_test_state *uts = ut_get_state();
 	struct dm_test_priv *priv = dev_get_priv(dev);
 
 	/* Private data should be allocated */
@@ -60,7 +59,7 @@ static int test_probe(struct udevice *dev)
 
 static int test_remove(struct udevice *dev)
 {
-	struct unit_test_state *uts = test_get_state();
+	struct unit_test_state *uts = ut_get_state();
 
 	/* Private data should still be allocated */
 	ut_assert(dev_get_priv(dev));
@@ -71,7 +70,7 @@ static int test_remove(struct udevice *dev)
 
 static int test_unbind(struct udevice *dev)
 {
-	struct unit_test_state *uts = test_get_state();
+	struct unit_test_state *uts = ut_get_state();
 
 	/* Private data should not be allocated */
 	ut_assert(!dev_get_priv(dev));
@@ -122,7 +121,7 @@ static int test_manual_bind(struct udevice *dev)
 
 static int test_manual_probe(struct udevice *dev)
 {
-	struct unit_test_state *uts = test_get_state();
+	struct unit_test_state *uts = ut_get_state();
 
 	dm_testdrv_op_count[DM_TEST_OP_PROBE]++;
 	if (!uts->force_fail_alloc)

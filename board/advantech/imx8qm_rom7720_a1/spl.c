@@ -2,7 +2,7 @@
 /*
  * Copyright 2017-2018 NXP
  */
-#include <common.h>
+#include <config.h>
 #include <dm.h>
 #include <image.h>
 #include <init.h>
@@ -17,6 +17,7 @@
 #include <firmware/imx/sci/sci.h>
 #include <asm/arch/imx8-pins.h>
 #include <asm/arch/iomux.h>
+#include <asm/sections.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 

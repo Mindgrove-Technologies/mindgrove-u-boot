@@ -8,13 +8,13 @@
  * Author: Beniamino Galvani <b.galvani@gmail.com>
  */
 
-#include <common.h>
 #include <clk.h>
 #include <dm.h>
 #include <generic-phy.h>
 #include <regmap.h>
 #include <reset.h>
 #include <linux/bitops.h>
+#include <linux/printk.h>
 
 #define REG_CONFIG					0x00
 	#define REG_CONFIG_CLK_EN			BIT(0)

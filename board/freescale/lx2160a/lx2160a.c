@@ -3,7 +3,7 @@
  * Copyright 2018-2021 NXP
  */
 
-#include <common.h>
+#include <config.h>
 #include <clock_legacy.h>
 #include <display_options.h>
 #include <dm.h>
@@ -13,6 +13,7 @@
 #include <i2c.h>
 #include <malloc.h>
 #include <errno.h>
+#include <event.h>
 #include <netdev.h>
 #include <fsl_ddr.h>
 #include <asm/io.h>
@@ -57,7 +58,7 @@ DECLARE_GLOBAL_DATA_PTR;
 
 int board_early_init_f(void)
 {
-#if defined(CONFIG_SYS_I2C_EARLY_INIT) && defined(CONFIG_SPL_BUILD)
+#if defined(CONFIG_SYS_I2C_EARLY_INIT) && defined(CONFIG_XPL_BUILD)
 	i2c_early_init_f();
 #endif
 
@@ -242,6 +243,7 @@ int init_func_vid(void)
 	return 0;
 }
 #endif
+EVENT_SPY_SIMPLE(EVT_MISC_INIT_F, init_func_vid);
 
 int checkboard(void)
 {
@@ -834,6 +836,7 @@ int ft_board_setup(void *blob, struct bd_info *bd)
 #ifdef CONFIG_FSL_MC_ENET
 	fdt_fsl_mc_fixup_iommu_map_entry(blob);
 	fdt_fixup_board_enet(blob);
+	fdt_reserve_mc_mem(blob, 0x4000);
 #endif
 	fdt_fixup_icid(blob);
 

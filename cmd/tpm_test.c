@@ -3,11 +3,12 @@
  * Copyright (c) 2015 Google, Inc
  */
 
-#include <common.h>
 #include <command.h>
 #include <cpu_func.h>
 #include <log.h>
+#include <time.h>
 #include <tpm-v1.h>
+#include <linux/printk.h>
 #include "tpm-user-utils.h"
 #include <tpm_api.h>
 
@@ -294,8 +295,8 @@ static int test_readonly(struct udevice *dev)
 	 */
 	index_0 += 1;
 	if (tpm_nv_write_value(dev, INDEX0, (uint8_t *)&index_0,
-			       sizeof(index_0) !=
-		TPM_SUCCESS)) {
+			       sizeof(index_0)) !=
+		TPM_SUCCESS) {
 		pr_err("\tcould not write index 0\n");
 	}
 	tpm_nv_write_value_lock(dev, INDEX0);
@@ -422,7 +423,6 @@ static int test_startup(struct udevice *dev)
 		printf("\t" #op " exceeded " #time_limit " ms\n"); \
 	} \
 } while (0)
-
 
 static int test_timing(struct udevice *dev)
 {

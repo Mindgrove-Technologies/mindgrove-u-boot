@@ -6,7 +6,6 @@
 
 #define LOG_CATEGORY UCLASS_BOOTSTD
 
-#include <common.h>
 #include <bootdev.h>
 #include <bootflow.h>
 #include <bootmeth.h>
@@ -22,6 +21,13 @@
 enum {
 	BF_NO_MORE_PARTS	= -ESHUTDOWN,
 	BF_NO_MORE_DEVICES	= -ENODEV,
+};
+
+static const char *const bootflow_img[BFI_COUNT - BFI_FIRST] = {
+	"extlinux_cfg",
+	"logo",
+	"efi",
+	"cmdline",
 };
 
 /**
@@ -56,11 +62,10 @@ int bootflow_first_glob(struct bootflow **bflowp)
 	if (ret)
 		return ret;
 
-	if (list_empty(&std->glob_head))
+	if (!std->bootflows.count)
 		return -ENOENT;
 
-	*bflowp = list_first_entry(&std->glob_head, struct bootflow,
-				   glob_node);
+	*bflowp = alist_getw(&std->bootflows, 0, struct bootflow);
 
 	return 0;
 }
@@ -68,19 +73,15 @@ int bootflow_first_glob(struct bootflow **bflowp)
 int bootflow_next_glob(struct bootflow **bflowp)
 {
 	struct bootstd_priv *std;
-	struct bootflow *bflow = *bflowp;
 	int ret;
 
 	ret = bootstd_get_priv(&std);
 	if (ret)
 		return ret;
 
-	*bflowp = NULL;
-
-	if (list_is_last(&bflow->glob_node, &std->glob_head))
+	*bflowp = alist_nextw(&std->bootflows, *bflowp);
+	if (!*bflowp)
 		return -ENOENT;
-
-	*bflowp = list_entry(bflow->glob_node.next, struct bootflow, glob_node);
 
 	return 0;
 }
@@ -156,6 +157,27 @@ static void bootflow_iter_set_dev(struct bootflow_iter *iter,
 }
 
 /**
+ * scan_next_in_uclass() - Scan for the next bootdev in the same media uclass
+ *
+ * Move through the following bootdevs until we find another in this media
+ * uclass, or run out
+ *
+ * @devp: On entry, the device to check, on exit the new device, or NULL if
+ * there is none
+ */
+static void scan_next_in_uclass(struct udevice **devp)
+{
+	struct udevice *dev = *devp;
+	enum uclass_id cur_id = device_get_uclass_id(dev->parent);
+
+	do {
+		uclass_find_next_device(&dev);
+	} while (dev && cur_id != device_get_uclass_id(dev->parent));
+
+	*devp = dev;
+}
+
+/**
  * iter_incr() - Move to the next item (method, part, bootdev)
  *
  * Return: 0 if OK, BF_NO_MORE_DEVICES if there are no more bootdevs
@@ -196,6 +218,9 @@ static int iter_incr(struct bootflow_iter *iter)
 		}
 	}
 
+	if (iter->flags & BOOTFLOWIF_SINGLE_PARTITION)
+		return BF_NO_MORE_DEVICES;
+
 	/* No more bootmeths; start at the first one, and... */
 	iter->cur_method = 0;
 	iter->method = iter->method_order[iter->cur_method];
@@ -230,8 +255,7 @@ static int iter_incr(struct bootflow_iter *iter)
 						 &method_flags);
 		} else if (IS_ENABLED(CONFIG_BOOTSTD_FULL) &&
 			   (iter->flags & BOOTFLOWIF_SINGLE_UCLASS)) {
-			/* Move to the next bootdev in this uclass */
-			uclass_find_next_device(&dev);
+			scan_next_in_uclass(&dev);
 			if (!dev) {
 				log_debug("finished uclass %s\n",
 					  dev_get_uclass_name(dev));
@@ -260,8 +284,26 @@ static int iter_incr(struct bootflow_iter *iter)
 		} else {
 			log_debug("labels %p\n", iter->labels);
 			if (iter->labels) {
-				ret = bootdev_next_label(iter, &dev,
-							 &method_flags);
+				/*
+				 * when the label is "mmc" we want to scan all
+				 * mmc bootdevs, not just the first. See
+				 * bootdev_find_by_label() where this flag is
+				 * set up
+				 */
+				if (iter->method_flags &
+				    BOOTFLOW_METHF_SINGLE_UCLASS) {
+					scan_next_in_uclass(&dev);
+					log_debug("looking for next device %s: %s\n",
+						  iter->dev->name,
+						  dev ? dev->name : "<none>");
+				} else {
+					dev = NULL;
+				}
+				if (!dev) {
+					log_debug("looking at next label\n");
+					ret = bootdev_next_label(iter, &dev,
+								 &method_flags);
+				}
 			} else {
 				ret = bootdev_next_prio(iter, &dev);
 				method_flags = 0;
@@ -323,7 +365,7 @@ static int bootflow_check(struct bootflow_iter *iter, struct bootflow *bflow)
 	}
 
 	/* Unless there is nothing more to try, move to the next device */
-	else if (ret != BF_NO_MORE_PARTS && ret != -ENOSYS) {
+	if (ret != BF_NO_MORE_PARTS && ret != -ENOSYS) {
 		log_debug("Bootdev '%s' part %d method '%s': Error %d\n",
 			  dev->name, iter->part, iter->method->name, ret);
 		/*
@@ -333,10 +375,8 @@ static int bootflow_check(struct bootflow_iter *iter, struct bootflow *bflow)
 		if (iter->flags & BOOTFLOWIF_ALL)
 			return log_msg_ret("all", ret);
 	}
-	if (ret)
-		return log_msg_ret("check", ret);
 
-	return 0;
+	return log_msg_ret("check", ret);
 }
 
 int bootflow_scan_first(struct udevice *dev, const char *label,
@@ -422,27 +462,47 @@ void bootflow_init(struct bootflow *bflow, struct udevice *bootdev,
 	bflow->dev = bootdev;
 	bflow->method = meth;
 	bflow->state = BOOTFLOWST_BASE;
+	alist_init_struct(&bflow->images, struct bootflow_img);
 }
 
 void bootflow_free(struct bootflow *bflow)
 {
+	struct bootflow_img *img;
+
 	free(bflow->name);
 	free(bflow->subdir);
 	free(bflow->fname);
-	free(bflow->buf);
+	if (!(bflow->flags & BOOTFLOWF_STATIC_BUF))
+		free(bflow->buf);
 	free(bflow->os_name);
 	free(bflow->fdt_fname);
+	free(bflow->bootmeth_priv);
+
+	alist_for_each(img, &bflow->images)
+		free(img->fname);
+	alist_empty(&bflow->images);
 }
 
 void bootflow_remove(struct bootflow *bflow)
 {
-	if (bflow->dev)
-		list_del(&bflow->bm_node);
-	list_del(&bflow->glob_node);
-
 	bootflow_free(bflow);
-	free(bflow);
 }
+
+#if CONFIG_IS_ENABLED(BOOTSTD_FULL)
+int bootflow_read_all(struct bootflow *bflow)
+{
+	int ret;
+
+	if (bflow->state != BOOTFLOWST_READY)
+		return log_msg_ret("rd", -EPROTO);
+
+	ret = bootmeth_read_all(bflow->method, bflow);
+	if (ret)
+		return log_msg_ret("rd2", ret);
+
+	return 0;
+}
+#endif /* BOOTSTD_FULL */
 
 int bootflow_boot(struct bootflow *bflow)
 {
@@ -514,6 +574,18 @@ int bootflow_iter_check_blk(const struct bootflow_iter *iter)
 
 	log_debug("uclass %d: %s\n", id, uclass_get_name(id));
 	if (id != UCLASS_ETH && id != UCLASS_BOOTSTD && id != UCLASS_QFW)
+		return 0;
+
+	return -ENOTSUPP;
+}
+
+int bootflow_iter_check_mmc(const struct bootflow_iter *iter)
+{
+	const struct udevice *media = dev_get_parent(iter->dev);
+	enum uclass_id id = device_get_uclass_id(media);
+
+	log_debug("uclass %d: %s\n", id, uclass_get_name(id));
+	if (id == UCLASS_MMC)
 		return 0;
 
 	return -ENOTSUPP;
@@ -697,7 +769,7 @@ int cmdline_set_arg(char *buf, int maxlen, const char *cmdline,
 					in_quote = false;
 				continue;
 			}
-			if (*p == '=') {
+			if (*p == '=' && !arg_end) {
 				arg_end = p;
 				val = p + 1;
 			} else if (*p == '"') {
@@ -733,7 +805,8 @@ int cmdline_set_arg(char *buf, int maxlen, const char *cmdline,
 		}
 
 		/* if this is the target arg, update it */
-		if (!strncmp(from, set_arg, arg_end - from)) {
+		if (arg_end - from == set_arg_len &&
+		    !strncmp(from, set_arg, set_arg_len)) {
 			if (!buf) {
 				bool has_quote = val_end[-1] == '"';
 
@@ -867,11 +940,15 @@ int bootflow_cmdline_auto(struct bootflow *bflow, const char *arg)
 		return ret;
 
 	*buf = '\0';
-	if (!strcmp("earlycon", arg)) {
+	if (!strcmp("earlycon", arg) && info.type == SERIAL_CHIP_16550_COMPATIBLE) {
 		snprintf(buf, sizeof(buf),
 			 "uart8250,mmio32,%#lx,%dn8", info.addr,
 			 info.baudrate);
-	} else if (!strcmp("console", arg)) {
+	} else if (!strcmp("earlycon", arg) && info.type == SERIAL_CHIP_PL01X) {
+		snprintf(buf, sizeof(buf),
+			 "pl011,mmio32,%#lx,%dn8", info.addr,
+			 info.baudrate);
+	} else if (!strcmp("console", arg) && info.type == SERIAL_CHIP_16550_COMPATIBLE) {
 		snprintf(buf, sizeof(buf),
 			 "ttyS0,%dn8", info.baudrate);
 	}
@@ -886,4 +963,49 @@ int bootflow_cmdline_auto(struct bootflow *bflow, const char *arg)
 		return ret;
 
 	return 0;
+}
+
+const char *bootflow_img_type_name(enum bootflow_img_t type)
+{
+	const char *name;
+
+	if (type >= BFI_FIRST && type < BFI_COUNT)
+		name = bootflow_img[type - BFI_FIRST];
+	else
+		name = genimg_get_type_short_name(type);
+
+	return name;
+}
+
+struct bootflow_img *bootflow_img_add(struct bootflow *bflow, const char *fname,
+				      enum bootflow_img_t type, ulong addr,
+				      ulong size)
+{
+	struct bootflow_img img, *ptr;
+
+	memset(&img, '\0', sizeof(struct bootflow_img));
+	img.fname = strdup(fname);
+	if (!img.fname)
+		return NULL;
+
+	img.type = type;
+	img.addr = addr;
+	img.size = size;
+	ptr = alist_add(&bflow->images, img);
+	if (!ptr)
+		return NULL;
+
+	return ptr;
+}
+
+int bootflow_get_seq(const struct bootflow *bflow)
+{
+	struct bootstd_priv *std;
+	int ret;
+
+	ret = bootstd_get_priv(&std);
+	if (ret)
+		return ret;
+
+	return alist_calc_index(&std->bootflows, bflow);
 }

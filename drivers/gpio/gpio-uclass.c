@@ -5,7 +5,6 @@
 
 #define LOG_CATEGORY	UCLASS_GPIO
 
-#include <common.h>
 #include <dm.h>
 #include <dt-structs.h>
 #include <log.h>
@@ -27,6 +26,8 @@
 #include <linux/delay.h>
 
 DECLARE_GLOBAL_DATA_PTR;
+
+#define GPIO_ALLOC_BITS	32
 
 /**
  * gpio_desc_init() - Initialize the GPIO descriptor
@@ -75,6 +76,46 @@ static int gpio_to_device(unsigned int gpio, struct gpio_desc *desc)
 	return -ENOENT;
 }
 
+/**
+ * gpio_is_claimed() - Test whether GPIO is claimed by consumer
+ *
+ * Test whether GPIO is claimed by consumer already.
+ *
+ * @uc_priv:	gpio_dev_priv pointer.
+ * @offset:	gpio offset within the device
+ * @return:	true if claimed, false if not claimed
+ */
+static bool gpio_is_claimed(struct gpio_dev_priv *uc_priv, unsigned int offset)
+{
+	return !!(uc_priv->claimed[offset / GPIO_ALLOC_BITS] & BIT(offset % GPIO_ALLOC_BITS));
+}
+
+/**
+ * gpio_set_claim() - Set GPIO claimed by consumer
+ *
+ * Set a bit which indicate the GPIO is claimed by consumer
+ *
+ * @uc_priv:	gpio_dev_priv pointer.
+ * @offset:	gpio offset within the device
+ */
+static void gpio_set_claim(struct gpio_dev_priv *uc_priv, unsigned int offset)
+{
+	uc_priv->claimed[offset / GPIO_ALLOC_BITS] |= BIT(offset % GPIO_ALLOC_BITS);
+}
+
+/**
+ * gpio_clear_claim() - Clear GPIO claimed by consumer
+ *
+ * Clear a bit which indicate the GPIO is claimed by consumer
+ *
+ * @uc_priv:	gpio_dev_priv pointer.
+ * @offset:	gpio offset within the device
+ */
+static void gpio_clear_claim(struct gpio_dev_priv *uc_priv, unsigned int offset)
+{
+	uc_priv->claimed[offset / GPIO_ALLOC_BITS] &= ~BIT(offset % GPIO_ALLOC_BITS);
+}
+
 #if CONFIG_IS_ENABLED(DM_GPIO_LOOKUP_LABEL)
 /**
  * dm_gpio_lookup_label() - look for name in gpio device
@@ -94,7 +135,7 @@ static int dm_gpio_lookup_label(const char *name,
 
 	*offset = -1;
 	for (i = 0; i < uc_priv->gpio_count; i++) {
-		if (!uc_priv->name[i])
+		if (!gpio_is_claimed(uc_priv, i))
 			continue;
 		if (!strcmp(name, uc_priv->name[i])) {
 			*offset = i;
@@ -350,7 +391,7 @@ int dm_gpio_request(struct gpio_desc *desc, const char *label)
 	int ret;
 
 	uc_priv = dev_get_uclass_priv(dev);
-	if (uc_priv->name[desc->offset])
+	if (gpio_is_claimed(uc_priv, desc->offset))
 		return -EBUSY;
 	str = strdup(label);
 	if (!str)
@@ -362,6 +403,8 @@ int dm_gpio_request(struct gpio_desc *desc, const char *label)
 			return ret;
 		}
 	}
+
+	gpio_set_claim(uc_priv, desc->offset);
 	uc_priv->name[desc->offset] = str;
 
 	return 0;
@@ -369,7 +412,7 @@ int dm_gpio_request(struct gpio_desc *desc, const char *label)
 
 static int dm_gpio_requestf(struct gpio_desc *desc, const char *fmt, ...)
 {
-#if !defined(CONFIG_SPL_BUILD) || !CONFIG_IS_ENABLED(USE_TINY_PRINTF)
+#if !defined(CONFIG_XPL_BUILD) || !CONFIG_IS_ENABLED(USE_TINY_PRINTF)
 	va_list args;
 	char buf[40];
 
@@ -418,7 +461,7 @@ int gpio_request(unsigned gpio, const char *label)
  */
 int gpio_requestf(unsigned gpio, const char *fmt, ...)
 {
-#if !defined(CONFIG_SPL_BUILD) || !CONFIG_IS_ENABLED(USE_TINY_PRINTF)
+#if !defined(CONFIG_XPL_BUILD) || !CONFIG_IS_ENABLED(USE_TINY_PRINTF)
 	va_list args;
 	char buf[40];
 
@@ -438,7 +481,7 @@ int _dm_gpio_free(struct udevice *dev, uint offset)
 	int ret;
 
 	uc_priv = dev_get_uclass_priv(dev);
-	if (!uc_priv->name[offset])
+	if (!gpio_is_claimed(uc_priv, offset))
 		return -ENXIO;
 	if (ops->rfree) {
 		ret = ops->rfree(dev, offset);
@@ -446,6 +489,7 @@ int _dm_gpio_free(struct udevice *dev, uint offset)
 			return ret;
 	}
 
+	gpio_clear_claim(uc_priv, offset);
 	free(uc_priv->name[offset]);
 	uc_priv->name[offset] = NULL;
 
@@ -480,7 +524,7 @@ static int check_reserved(const struct gpio_desc *desc, const char *func)
 		return -ENOENT;
 
 	uc_priv = dev_get_uclass_priv(desc->dev);
-	if (!uc_priv->name[desc->offset]) {
+	if (!gpio_is_claimed(uc_priv, desc->offset)) {
 		printf("%s: %s: error: gpio %s%d not reserved\n",
 		       desc->dev->name, func,
 		       uc_priv->bank_name ? uc_priv->bank_name : "",
@@ -661,6 +705,9 @@ static int _dm_gpio_set_flags(struct gpio_desc *desc, ulong flags)
 	if (ops->set_flags) {
 		ret = ops->set_flags(dev, desc->offset, flags);
 	} else {
+		if (flags & GPIOD_MASK_PULL)
+			return -EINVAL;
+
 		if (flags & GPIOD_IS_OUT) {
 			bool value = flags & GPIOD_IS_OUT_ACTIVE;
 
@@ -826,7 +873,7 @@ static int get_function(struct udevice *dev, int offset, bool skip_unused,
 		return -EINVAL;
 	if (namep)
 		*namep = uc_priv->name[offset];
-	if (skip_unused && !uc_priv->name[offset])
+	if (skip_unused && !gpio_is_claimed(uc_priv, offset))
 		return GPIOF_UNUSED;
 	if (ops->get_function) {
 		int ret;
@@ -1098,9 +1145,29 @@ static int gpio_request_tail(int ret, const char *nodename,
 		ret = uclass_get_device_by_ofnode(UCLASS_GPIO, args->node,
 						  &desc->dev);
 		if (ret) {
+#if CONFIG_IS_ENABLED(MAX77663_GPIO) || CONFIG_IS_ENABLED(PALMAS_GPIO)
+			struct udevice *pmic;
+			ret = uclass_get_device_by_ofnode(UCLASS_PMIC, args->node,
+							  &pmic);
+			if (ret) {
+				log_debug("%s: PMIC device get failed, err %d\n",
+					  __func__, ret);
+				goto err;
+			}
+
+			device_foreach_child(desc->dev, pmic) {
+				if (device_get_uclass_id(desc->dev) == UCLASS_GPIO)
+					break;
+			}
+
+			/* if loop exits without GPIO device return error */
+			if (device_get_uclass_id(desc->dev) != UCLASS_GPIO)
+				goto err;
+#else
 			debug("%s: uclass_get_device_by_ofnode failed\n",
 			      __func__);
 			goto err;
+#endif
 		}
 	}
 	ret = gpio_find_and_xlate(desc, args);
@@ -1341,6 +1408,14 @@ static int gpio_post_probe(struct udevice *dev)
 	if (!uc_priv->name)
 		return -ENOMEM;
 
+	uc_priv->claimed = calloc(DIV_ROUND_UP(uc_priv->gpio_count,
+					       GPIO_ALLOC_BITS),
+				  GPIO_ALLOC_BITS / 8);
+	if (!uc_priv->claimed) {
+		free(uc_priv->name);
+		return -ENOMEM;
+	}
+
 	return gpio_renumber(NULL);
 }
 
@@ -1353,6 +1428,7 @@ static int gpio_pre_remove(struct udevice *dev)
 		if (uc_priv->name[i])
 			free(uc_priv->name[i]);
 	}
+	free(uc_priv->claimed);
 	free(uc_priv->name);
 
 	return gpio_renumber(dev);
@@ -1444,36 +1520,6 @@ void devm_gpiod_put(struct udevice *dev, struct gpio_desc *desc)
 
 static int gpio_post_bind(struct udevice *dev)
 {
-#if defined(CONFIG_NEEDS_MANUAL_RELOC)
-	struct dm_gpio_ops *ops = (struct dm_gpio_ops *)device_get_ops(dev);
-	static int reloc_done;
-
-	if (!reloc_done) {
-		if (ops->request)
-			ops->request += gd->reloc_off;
-		if (ops->rfree)
-			ops->rfree += gd->reloc_off;
-		if (ops->direction_input)
-			ops->direction_input += gd->reloc_off;
-		if (ops->direction_output)
-			ops->direction_output += gd->reloc_off;
-		if (ops->get_value)
-			ops->get_value += gd->reloc_off;
-		if (ops->set_value)
-			ops->set_value += gd->reloc_off;
-		if (ops->get_function)
-			ops->get_function += gd->reloc_off;
-		if (ops->xlate)
-			ops->xlate += gd->reloc_off;
-		if (ops->set_flags)
-			ops->set_flags += gd->reloc_off;
-		if (ops->get_flags)
-			ops->get_flags += gd->reloc_off;
-
-		reloc_done++;
-	}
-#endif
-
 	if (CONFIG_IS_ENABLED(GPIO_HOG) && dev_has_ofnode(dev)) {
 		struct udevice *child;
 		ofnode node;

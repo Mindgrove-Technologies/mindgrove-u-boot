@@ -334,6 +334,25 @@ int of_read_u32_index(const struct device_node *np, const char *propname,
 		      int index, u32 *outp);
 
 /**
+ * of_read_u64_index() - Find and read a 64-bit value from a multi-value
+ *                       property
+ *
+ * @np:		device node from which the property value is to be read.
+ * @propname:	name of the property to be searched.
+ * @index:	index of the u32 in the list of values
+ * @outp:	pointer to return value, modified only if return value is 0.
+ *
+ * Search for a property in a device node and read a 64-bit value from
+ * it.
+ *
+ * Return:
+ *   0 on success, -EINVAL if the property does not exist, or -EOVERFLOW if the
+ *   property data isn't large enough.
+ */
+int of_read_u64_index(const struct device_node *np, const char *propname,
+		      int index, u64 *outp);
+
+/**
  * of_read_u64() - Find and read a 64-bit integer from a property
  *
  * Search for a property in a device node and read a 64-bit value from
@@ -433,6 +452,92 @@ static inline int of_property_count_strings(const struct device_node *np,
 {
 	return of_property_read_string_helper(np, propname, NULL, 0, 0);
 }
+
+/**
+ * of_root_parse_phandle - Resolve a phandle property to a device_node pointer
+ *			   from a root node
+ * @root: Pointer to root device tree node (default root node if NULL)
+ * @np: Pointer to device node holding phandle property
+ * @phandle_name: Name of property holding a phandle value
+ * @index: For properties holding a table of phandles, this is the index into
+ *         the table
+ *
+ * Return:
+ *   the device_node pointer with refcount incremented.  Use
+ *   of_node_put() on it when done.
+ */
+struct device_node *of_root_parse_phandle(struct device_node *root,
+					  const struct device_node *np,
+					  const char *phandle_name, int index);
+
+/**
+ * of_root_parse_phandle_with_args() - Find a node pointed by phandle in a list
+ *				       from a root node
+ *
+ * @root:	pointer to root device tree node (default root node if NULL)
+ * @np:		pointer to a device tree node containing a list
+ * @list_name:	property name that contains a list
+ * @cells_name:	property name that specifies phandles' arguments count
+ * @cells_count: Cell count to use if @cells_name is NULL
+ * @index:	index of a phandle to parse out
+ * @out_args:	optional pointer to output arguments structure (will be filled)
+ * Return:
+ *   0 on success (with @out_args filled out if not NULL), -ENOENT if
+ *   @list_name does not exist, -EINVAL if a phandle was not found,
+ *   @cells_name could not be found, the arguments were truncated or there
+ *   were too many arguments.
+ *
+ * This function is useful to parse lists of phandles and their arguments.
+ * Returns 0 on success and fills out_args, on error returns appropriate
+ * errno value.
+ *
+ * Caller is responsible to call of_node_put() on the returned out_args->np
+ * pointer.
+ *
+ * Example:
+ *
+ * .. code-block::
+ *
+ *   phandle1: node1 {
+ *       #list-cells = <2>;
+ *   };
+ *   phandle2: node2 {
+ *       #list-cells = <1>;
+ *   };
+ *   node3 {
+ *       list = <&phandle1 1 2 &phandle2 3>;
+ *   };
+ *
+ * To get a device_node of the `node2' node you may call this:
+ * of_root_parse_phandle_with_args(node3, "list", "#list-cells", 1, &args);
+ */
+int of_root_parse_phandle_with_args(struct device_node *root,
+				    const struct device_node *np,
+				    const char *list_name, const char *cells_name,
+				    int cells_count, int index,
+				    struct of_phandle_args *out_args);
+
+/**
+ * of_root_count_phandle_with_args() - Count the number of phandle in a list
+ *				       from a root node
+ *
+ * @root:	pointer to root device tree node (default root node if NULL)
+ * @np:		pointer to a device tree node containing a list
+ * @list_name:	property name that contains a list
+ * @cells_name:	property name that specifies phandles' arguments count
+ * @cells_count: Cell count to use if @cells_name is NULL
+ * Return:
+ *   number of phandle found, -ENOENT if @list_name does not exist,
+ *   -EINVAL if a phandle was not found, @cells_name could not be found,
+ *   the arguments were truncated or there were too many arguments.
+ *
+ * Returns number of phandle found on success, on error returns appropriate
+ * errno value.
+ */
+int of_root_count_phandle_with_args(struct device_node *root,
+				    const struct device_node *np,
+				    const char *list_name, const char *cells_name,
+				    int cells_count);
 
 /**
  * of_parse_phandle - Resolve a phandle property to a device_node pointer
@@ -577,5 +682,23 @@ int of_write_prop(struct device_node *np, const char *propname, int len,
  */
 int of_add_subnode(struct device_node *node, const char *name, int len,
 		   struct device_node **subnodep);
+
+/**
+ * of_remove_property() - Remove a property from a node
+ *
+ * @np: Node to remove from
+ * @prop: Pointer to property to remove
+ * Return 0 if OK, -ENODEV if the property could not be found in the node
+ */
+int of_remove_property(struct device_node *np, struct property *prop);
+
+/**
+ * of_remove_node() - Remove a node from the tree
+ *
+ * @to_remove: Node to remove
+ * Return: 0 if OK, -EPERM if it is the root node (wWhich cannot be removed),
+ * -ENOENT if the tree is broken (to_remove is not a child of its parent)
+ */
+int of_remove_node(struct device_node *to_remove);
 
 #endif

@@ -3,7 +3,6 @@
  * Copyright (c) 2011-2013, NVIDIA Corporation.
  */
 
-#include <common.h>
 #include <dm.h>
 #include <errno.h>
 #include <log.h>
@@ -15,6 +14,7 @@
 #include <asm/arch/clock.h>
 #include <asm/arch-tegra/dc.h>
 #include <linux/delay.h>
+#include <linux/printk.h>
 #include "displayport.h"
 #include "sor.h"
 #include <linux/err.h>

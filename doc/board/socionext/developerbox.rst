@@ -42,9 +42,10 @@ Compile from source
 You can build U-Boot without any additinal source code.::
 
   cd u-boot
+  git checkout v2023.07
   export ARCH=arm64
   export CROSS_COMPILE=aarch64-linux-gnu-
-  make SynQuacer_defconfig
+  make synquacer_developerbox_defconfig
   make -j `noproc`
 
 Then, expand the binary to 1MB for preparing flash.::
@@ -115,6 +116,7 @@ configs/synquacer_developerbox_defconfig enables default FWU configuration ::
  CONFIG_FWU_NUM_BANKS=2
  CONFIG_FWU_NUM_IMAGES_PER_BANK=1
  CONFIG_CMD_FWU_METADATA=y
+ CONFIG_FWU_MDATA_V2=y
 
 And build it::
 
@@ -128,7 +130,9 @@ And build it::
 By default, the CONFIG_FWU_NUM_BANKS and CONFIG_FWU_NUM_IMAGES_PER_BANKS are
 set to 2 and 1 respectively. This uses FIP (Firmware Image Package) type image
 which contains TF-A, U-Boot and OP-TEE (the OP-TEE is optional).
-You can use fiptool to compose the FIP image from those firmware images.
+You can use fiptool to compose the FIP image from those firmware
+images. There are two versions of the FWU metadata, of which the
+platform enables version 2 by default.
 
 Rebuild SCP firmware
 --------------------
@@ -193,7 +197,7 @@ following UUIDs.
 
 These UUIDs are used for making a FWU metadata image.
 
-u-boot$ ./tools/mkfwumdata -i 1 -b 2 \
+u-boot$ ./tools/mkfwumdata -v 2 -i 1 -b 2 \
 	17e86d77-41f9-4fd7-87ec-a55df9842de5,10c36d7d-ca52-b843-b7b9-f9d6c501d108,5a66a702-99fd-4fef-a392-c26e261a2828,a8f868a1-6e5c-4757-878d-ce63375ef2c0 \
 	../devbox-fwu-mdata.img
 
@@ -211,8 +215,8 @@ can be installed via NOR flash writer.
 Once the flasher tool is running we are ready to flash the images.::
 Write the FIP image to the Bank-0 & 1 at 6MB and 10MB offset.::
 
-  flash rawwrite 600000 180000
-  flash rawwrite a00000 180000
+  flash rawwrite 600000 400000
+  flash rawwrite a00000 400000
   >> Send SPI_NOR_NEWFIP.fd via XMODEM (Control-A S in minicom) <<
 
   flash rawwrite 500000 1000

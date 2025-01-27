@@ -16,7 +16,6 @@
 #include <asm/global_data.h>
 #include <asm/gpio.h>
 #include <asm/io.h>
-#include <common.h>
 #include <clk.h>
 #include <dm.h>
 #include <fdt_support.h>
@@ -29,6 +28,7 @@
 #include <net.h>
 #include <reset.h>
 #include <wait_bit.h>
+#include <power/regulator.h>
 
 #define MDIO_CMD_MII_BUSY		BIT(0)
 #define MDIO_CMD_MII_WRITE		BIT(1)
@@ -167,11 +167,9 @@ struct emac_eth_dev {
 	struct clk ephy_clk;
 	struct reset_ctl tx_rst;
 	struct reset_ctl ephy_rst;
-#if CONFIG_IS_ENABLED(DM_GPIO)
 	struct gpio_desc reset_gpio;
-#endif
+	struct udevice *phy_reg;
 };
-
 
 struct sun8i_eth_pdata {
 	struct eth_pdata eth_pdata;
@@ -179,7 +177,6 @@ struct sun8i_eth_pdata {
 	int tx_delay_ps;
 	int rx_delay_ps;
 };
-
 
 static int sun8i_mdio_read(struct mii_dev *bus, int addr, int devad, int reg)
 {
@@ -615,7 +612,6 @@ err_tx_clk:
 	return ret;
 }
 
-#if CONFIG_IS_ENABLED(DM_GPIO)
 static int sun8i_mdio_reset(struct mii_dev *bus)
 {
 	struct udevice *dev = bus->priv;
@@ -647,7 +643,6 @@ static int sun8i_mdio_reset(struct mii_dev *bus)
 
 	return 0;
 }
-#endif
 
 static int sun8i_mdio_init(const char *name, struct udevice *priv)
 {
@@ -662,9 +657,7 @@ static int sun8i_mdio_init(const char *name, struct udevice *priv)
 	bus->write = sun8i_mdio_write;
 	snprintf(bus->name, sizeof(bus->name), name);
 	bus->priv = (void *)priv;
-#if CONFIG_IS_ENABLED(DM_GPIO)
 	bus->reset = sun8i_mdio_reset;
-#endif
 
 	return  mdio_register(bus);
 }
@@ -719,6 +712,9 @@ static int sun8i_emac_eth_probe(struct udevice *dev)
 		return ret;
 
 	sun8i_emac_set_syscon(sun8i_pdata, priv);
+
+	if (priv->phy_reg)
+		regulator_set_enable(priv->phy_reg, true);
 
 	sun8i_mdio_init(dev->name, dev);
 	priv->bus = miiphy_get_dev_by_name(dev->name);
@@ -778,9 +774,7 @@ static int sun8i_emac_eth_of_to_plat(struct udevice *dev)
 	const fdt32_t *reg;
 	int node = dev_of_offset(dev);
 	int offset = 0;
-#if CONFIG_IS_ENABLED(DM_GPIO)
 	int reset_flags = GPIOD_IS_OUT;
-#endif
 	int ret;
 
 	pdata->iobase = dev_read_addr(dev);
@@ -829,16 +823,15 @@ static int sun8i_emac_eth_of_to_plat(struct udevice *dev)
 
 	priv->sysctl_reg = (void *)syscon_base + priv->variant->syscon_offset;
 
+	device_get_supply_regulator(dev, "phy-supply", &priv->phy_reg);
+
 	pdata->phy_interface = -1;
 	priv->phyaddr = -1;
 	priv->use_internal_phy = false;
 
 	offset = fdtdec_lookup_phandle(gd->fdt_blob, node, "phy-handle");
-	if (offset < 0) {
-		debug("%s: Cannot find PHY address\n", __func__);
-		return -EINVAL;
-	}
-	priv->phyaddr = fdtdec_get_int(gd->fdt_blob, offset, "reg", -1);
+	if (offset >= 0)
+		priv->phyaddr = fdtdec_get_int(gd->fdt_blob, offset, "reg", -1);
 
 	pdata->phy_interface = dev_read_phy_mode(dev);
 	debug("phy interface %d\n", pdata->phy_interface);
@@ -865,7 +858,6 @@ static int sun8i_emac_eth_of_to_plat(struct udevice *dev)
 		printf("%s: Invalid RX delay value %d\n", __func__,
 		       sun8i_pdata->rx_delay_ps);
 
-#if CONFIG_IS_ENABLED(DM_GPIO)
 	if (fdtdec_get_bool(gd->fdt_blob, dev_of_offset(dev),
 			    "snps,reset-active-low"))
 		reset_flags |= GPIOD_ACTIVE_LOW;
@@ -880,7 +872,6 @@ static int sun8i_emac_eth_of_to_plat(struct udevice *dev)
 	} else if (ret == -ENOENT) {
 		ret = 0;
 	}
-#endif
 
 	return 0;
 }
@@ -897,6 +888,11 @@ static const struct emac_variant emac_variant_h3 = {
 
 static const struct emac_variant emac_variant_r40 = {
 	.syscon_offset		= 0x164,
+};
+
+static const struct emac_variant emac_variant_v3s = {
+	.syscon_offset		= 0x30,
+	.soc_has_internal_phy	= true,
 };
 
 static const struct emac_variant emac_variant_a64 = {
@@ -916,6 +912,8 @@ static const struct udevice_id sun8i_emac_eth_ids[] = {
 	  .data = (ulong)&emac_variant_h3 },
 	{ .compatible = "allwinner,sun8i-r40-gmac",
 	  .data = (ulong)&emac_variant_r40 },
+	{ .compatible = "allwinner,sun8i-v3s-emac",
+	  .data = (ulong)&emac_variant_v3s },
 	{ .compatible = "allwinner,sun50i-a64-emac",
 	  .data = (ulong)&emac_variant_a64 },
 	{ .compatible = "allwinner,sun50i-h6-emac",

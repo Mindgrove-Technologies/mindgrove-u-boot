@@ -6,18 +6,22 @@
 #include "imx8mp-u-boot.dtsi"
 
 / {
+	/* U-Boot does not yet have a proper PCIe clk driver */
+	pcie0_refclk: clock-pcie {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <100000000>;
+	};
+
 	wdt-reboot {
 		compatible = "wdt-reboot";
 		wdt = <&wdog1>;
 		bootph-pre-ram;
 	};
+};
 
-	firmware {
-		optee {
-			compatible = "linaro,optee-tz";
-			method = "smc";
-		};
-	};
+&pcie_phy {
+	clocks = <&pcie0_refclk>;
 };
 
 &{/soc@0/bus@30800000/i2c@30a20000/pmic@25} {
@@ -26,16 +30,6 @@
 
 &{/soc@0/bus@30800000/i2c@30a20000/pmic@25/regulators} {
 	bootph-pre-ram;
-};
-
-&crypto {
-	bootph-pre-ram;
-};
-
-&eqos {
-	/delete-property/ assigned-clocks;
-	/delete-property/ assigned-clock-parents;
-	/delete-property/ assigned-clock-rates;
 };
 
 &ethphy0 {
@@ -136,18 +130,6 @@
 &reg_usdhc2_vmmc {
 	bootph-pre-ram;
 	u-boot,off-on-delay-us = <20000>;
-};
-
-&sec_jr0 {
-	bootph-pre-ram;
-};
-
-&sec_jr1 {
-	bootph-pre-ram;
-};
-
-&sec_jr2 {
-	bootph-pre-ram;
 };
 
 &tpm {

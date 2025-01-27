@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0+
 #
-# Copyright (C) 2011, Texas Instruments, Incorporated - http://www.ti.com/
+# Copyright (C) 2011, Texas Instruments, Incorporated - https://www.ti.com/
 
 obj-$(CONFIG_AM33XX)	+= clock_am33xx.o
 obj-$(CONFIG_AM43XX)	+= clock_am43xx.o
@@ -11,7 +11,7 @@ endif
 
 obj-y	+= sys_info.o
 obj-y	+= ddr.o
-ifeq ($(CONFIG_$(SPL_)SKIP_LOWLEVEL_INIT),)
+ifeq ($(CONFIG_$(XPL_)SKIP_LOWLEVEL_INIT),)
 obj-y	+= emif4.o
 endif
 obj-y	+= board.o

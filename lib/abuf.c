@@ -7,7 +7,6 @@
  */
 
 #ifndef USE_HOSTCC
-#include <common.h>
 #include <malloc.h>
 #include <mapmem.h>
 #include <string.h>
@@ -27,6 +26,12 @@ void abuf_map_sysmem(struct abuf *abuf, ulong addr, size_t size)
 {
 	abuf_set(abuf, map_sysmem(addr, size), size);
 }
+
+ulong abuf_addr(const struct abuf *abuf)
+{
+	return map_to_sysmem(abuf->data);
+}
+
 #else
 /* copied from lib/string.c for convenience */
 static char *memdup(const void *src, size_t len)
@@ -82,6 +87,11 @@ bool abuf_realloc(struct abuf *abuf, size_t new_size)
 	}
 }
 
+bool abuf_realloc_inc(struct abuf *abuf, size_t inc)
+{
+	return abuf_realloc(abuf, abuf->size + inc);
+}
+
 void *abuf_uninit_move(struct abuf *abuf, size_t *sizep)
 {
 	void *ptr;
@@ -107,6 +117,12 @@ void abuf_init_set(struct abuf *abuf, void *data, size_t size)
 {
 	abuf_init(abuf);
 	abuf_set(abuf, data, size);
+}
+
+void abuf_init_const(struct abuf *abuf, const void *data, size_t size)
+{
+	/* for now there is no flag indicating that the abuf data is constant */
+	abuf_init_set(abuf, (void *)data, size);
 }
 
 void abuf_init_move(struct abuf *abuf, void *data, size_t size)

@@ -28,29 +28,52 @@ config CONSOLE_RECORD_OUT_SIZE
 	depends on CONSOLE_RECORD
 	default 0x400 if CONSOLE_RECORD
 	help
-	  Set the size of the console output buffer. When this fills up, no
-	  more data will be recorded until some is removed. The buffer is
-	  allocated immediately after the malloc() region is ready.
+	  Set the size of the console recording output buffer. When this fills
+	  up, no more data will be recorded until some is removed. The buffer
+	  is allocated immediately after the malloc() region is ready.
 
 config CONSOLE_RECORD_OUT_SIZE_F
 	hex "Output buffer size before relocation"
 	depends on CONSOLE_RECORD
 	default 0x400 if CONSOLE_RECORD
 	help
-	  Set the size of the console output buffer before relocation. When
-	  this fills up, no more data will be recorded until some is removed.
-	  The buffer is allocated immediately after the early malloc() region is
-	  ready.
+	  Set the size of the console recording output buffer before
+	  relocation. When this fills up, no more data will be recorded until
+	  some is removed.  The buffer is allocated immediately after the early
+	  malloc() region is ready.
 
 config CONSOLE_RECORD_IN_SIZE
 	hex "Input buffer size"
 	depends on CONSOLE_RECORD
 	default 0x100 if CONSOLE_RECORD
 	help
-	  Set the size of the console input buffer. When this contains data,
+	  Set the size of the console recording input buffer. When this contains data,
 	  tstc() and getc() will use this in preference to real device input.
 	  The buffer is allocated immediately after the malloc() region is
 	  ready.
+
+config SYS_CBSIZE
+	int "Console input buffer size"
+	default 2048 if ARCH_TEGRA || ARCH_VERSAL || ARCH_ZYNQ || ARCH_ZYNQMP || \
+		RCAR_GEN3 || TARGET_SOCFPGA_SOC64
+	default 512 if ARCH_MX5 || ARCH_MX6 || ARCH_MX7 || FSL_LSCH2 || \
+		FSL_LSCH3 || X86
+	default 256 if M68K || PPC
+	default 1024
+	help
+	  Set the size of the console input buffer. This is used both in the
+	  case of reading input literally from the user in some manner as well
+	  as when we need to construct or modify that type of input, for
+	  example when constructing "bootargs" for the OS.
+
+config SYS_PBSIZE
+	int "Console output buffer size"
+	default 1024 if ARCH_SUNXI
+	default 1044
+	help
+	  Set the size of the console output buffer. This is used when we need
+	  to work with some form of a buffer while providing output in some
+	  form to the user.
 
 config DISABLE_CONSOLE
 	bool "Add functionality to disable console completely"
@@ -208,7 +231,7 @@ config PRE_CON_BUF_ADDR
 	default 0x2f000000 if ARCH_SUNXI && MACH_SUN9I
 	default 0x4f000000 if ARCH_SUNXI && !MACH_SUN9I
 	default 0x0f000000 if ROCKCHIP_RK3288
-	default 0x0f200000 if ROCKCHIP_RK3399
+	default 0x0f200000 if ROCKCHIP_RK3399 || ROCKCHIP_RK3328
 	help
 	  This sets the start address of the pre-console buffer. This must
 	  be in available memory and is accessed before relocation and
@@ -224,9 +247,19 @@ config CONSOLE_FLUSH_SUPPORT
 	help
 	  This enables compilation of flush() function for console flush support.
 
+config CONSOLE_FLUSH_ON_NEWLINE
+	bool "Flush console buffer on every newline character"
+	depends on DM_SERIAL
+	help
+	  This makes the serial core code flush the console device
+	  whenever a newline (\n) character has been emitted. This can
+	  be especially useful when "printf debugging", as otherwise
+	  lots of output could still be in the UART's FIFO by the time
+	  one hits the code which causes the CPU to hang or reset.
+
 config CONSOLE_MUX
 	bool "Enable console multiplexing"
-	default y if VIDEO || VIDEO || LCD
+	default y if VIDEO || LCD
 	help
 	  This allows multiple devices to be used for each console 'file'.
 	  For example, stdout can be set to go to serial and video.
@@ -391,7 +424,7 @@ config LOGF_FUNC_PAD
 
 config LOG_SYSLOG
 	bool "Log output to syslog server"
-	depends on NET
+	depends on NET || NET_LWIP
 	help
 	  Enables a log driver which broadcasts log records via UDP port 514
 	  to syslog servers.
@@ -593,9 +626,18 @@ config CYCLIC
 
 if CYCLIC
 
+config SPL_CYCLIC
+	bool "General-purpose cyclic execution mechanism (SPL)"
+	help
+	  This enables a general-purpose cyclic execution infrastructure in SPL,
+	  to allow "small" (run-time wise) functions to be executed at
+	  a specified frequency. Things like LED blinking or watchdog
+	  triggering are examples for such tasks.
+
 config CYCLIC_MAX_CPU_TIME_US
 	int "Sets the max allowed time for a cyclic function in us"
-	default 1000
+	default 100000 if SANDBOX  # sandbox video is quite slow
+	default 5000
 	help
 	  The max allowed time for a cyclic function in us. If a functions
 	  takes longer than this duration this function will get unregistered
@@ -620,7 +662,7 @@ config EVENT_DYNAMIC
 	bool
 	help
 	  Enable this to support adding an event spy at runtime, without adding
-	  it to the EVENT_SPY() linker list. This increases code size slightly
+	  it to the EVENT_SPY*() linker list. This increases code size slightly
 	  but provides more flexibility for boards and subsystems that need it.
 
 config EVENT_DEBUG
@@ -648,7 +690,7 @@ config SPL_EVENT_DYNAMIC
 	depends on SPL_EVENT && EVENT_DYNAMIC
 	help
 	  Enable this to support adding an event spy at runtime, without adding
-	  it to the EVENT_SPY() linker list. This increases code size slightly
+	  it to the EVENT_SPY*() linker list. This increases code size slightly
 	  but provides more flexibility for boards and subsystems that need it.
 
 endif # EVENT
@@ -720,6 +762,7 @@ config SYS_FSL_CLK
 
 config LAST_STAGE_INIT
 	bool "Call board-specific as last setup step"
+	select EVENT
 	help
 	  Some boards need to perform initialisation immediately before control
 	  is passed to the command-line interpreter (e.g. for initializations
@@ -802,11 +845,20 @@ config HASH
 	  and the algorithms it supports are defined in common/hash.c. See
 	  also CMD_HASH for command-line access.
 
+config HASH_CRC8
+	bool "Make crc8 available via the hash API"
+	depends on HASH && CRC8
+	help
+	  Most times, the crc8() function is called directly. To make it also
+	  available via the hash API, e.g. in hash_block(), enable this
+	  option.
+
 config AVB_VERIFY
 	bool "Build Android Verified Boot operations"
 	depends on LIBAVB
 	depends on MMC
 	depends on PARTITION_UUIDS
+	depends on FASTBOOT
 	help
 	  This option enables compilation of bootloader-dependent operations,
 	  used by Android Verified Boot 2.0 library (libavb). Includes:
@@ -884,6 +936,9 @@ config BOARD_RNG_SEED
 	  new seed for use on subsequent boots, and whether or not the
 	  kernel should account any entropy from the given seed.
 
+	  Default seed size (64 bytes) can be overridden by a decimal
+	  environment variable rng_seed_size.
+
 endmenu
 
 menu "Update support"
@@ -891,6 +946,7 @@ menu "Update support"
 config UPDATE_COMMON
 	bool
 	select DFU_WRITE_ALT
+	imply CMD_TFTPBOOT
 
 config UPDATE_TFTP
 	bool "Auto-update using fitImage via TFTP"
@@ -943,7 +999,8 @@ config ANDROID_AB_BACKUP_OFFSET
 	help
 	  If non-zero, a backup bootloader message starting at this offset in
 	  the partition will tried in the event that the primary one (starting
-	  at offset 0) fails its checksum.
+	  at offset 0) fails its checksum. The offset is in bytes and must be
+	  multiple of the block size.
 
 endmenu
 
@@ -951,6 +1008,7 @@ menu "Blob list"
 
 config BLOBLIST
 	bool "Support for a bloblist"
+	select CRC32
 	help
 	  This enables support for a bloblist in U-Boot, which can be passed
 	  from TPL to SPL to U-Boot proper (and potentially to Linux). The
@@ -961,6 +1019,7 @@ config BLOBLIST
 config SPL_BLOBLIST
 	bool "Support for a bloblist in SPL"
 	depends on BLOBLIST && SPL_LIBGENERIC_SUPPORT && SPL_LIBCOMMON_SUPPORT
+	select SPL_CRC32
 	default y if SPL
 	help
 	  This enables a bloblist in SPL. If this is the first part of U-Boot
@@ -970,6 +1029,7 @@ config SPL_BLOBLIST
 config TPL_BLOBLIST
 	bool "Support for a bloblist in TPL"
 	depends on BLOBLIST && TPL_LIBGENERIC_SUPPORT && TPL_LIBCOMMON_SUPPORT
+	select TPL_CRC32
 	default y if TPL
 	help
 	  This enables a bloblist in TPL. The bloblist is set up in TPL and
@@ -987,6 +1047,8 @@ if BLOBLIST
 
 choice
 	prompt "Bloblist location"
+	default BLOBLIST_FIXED if SANDBOX
+	default BLOBLIST_ALLOC
 	help
 	  Select the location of the bloblist, via various means.
 
@@ -1008,7 +1070,7 @@ endchoice
 
 config BLOBLIST_ADDR
 	hex "Address of bloblist"
-	default 0xc000 if SANDBOX
+	default 0xb000 if SANDBOX
 	depends on BLOBLIST_FIXED
 	help
 	  Sets the address of the bloblist, set up by the first part of U-Boot
@@ -1028,7 +1090,8 @@ config BLOBLIST_SIZE
 config BLOBLIST_SIZE_RELOC
 	hex "Size of bloblist after relocation"
 	default BLOBLIST_SIZE if BLOBLIST_FIXED || BLOBLIST_ALLOC
-	default 0 if BLOBLIST_PASSAGE
+	default 0x0 if BLOBLIST_PASSAGE
+	default 0x20000 if (ARM && EFI_LOADER && GENERATE_ACPI_TABLE)
 	help
 	  Sets the size of the bloblist in bytes after relocation. Since U-Boot
 	  has a lot more memory available then, it is possible to use a larger
@@ -1153,25 +1216,5 @@ config VPL_IMAGE_SIGN_INFO
 
 endif
 
-config FDT_SIMPLEFB
-	bool "FDT tools for simplefb support"
-	depends on OF_LIBFDT
-	help
-	  Enable the fdt tools to manage the simple fb nodes in device tree.
-	  These functions can be used by board to indicate to the OS
-	  the presence of the simple frame buffer with associated reserved
-	  memory
-
 config IO_TRACE
 	bool
-
-config BMP
-	bool "Enable bmp image display"
-	help
-	  Enable bmp functions to display bmp image and get bmp info.
-
-config SPL_BMP
-	bool "Enable bmp image display at  SPL"
-	depends on SPL_VIDEO
-	help
-	  Enable bmp functions to display bmp image and get bmp info at SPL.

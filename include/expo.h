@@ -4,14 +4,36 @@
  * Written by Simon Glass <sjg@chromium.org>
  */
 
-#ifndef __SCENE_H
-#define __SCENE_H
+#ifndef __EXPO_H
+#define __EXPO_H
 
+#include <abuf.h>
 #include <dm/ofnode_decl.h>
 #include <linux/list.h>
 
 struct udevice;
-struct video_priv;
+
+#include <cli.h>
+
+/**
+ * enum expo_id_t - standard expo IDs
+ *
+ * These are assumed to be in use at all times. Expos should use IDs starting
+ * from EXPOID_BASE_ID,
+ *
+ * @EXPOID_NONE: Not used, invalid ID 0
+ * @EXPOID_SAVE: User has requested that the expo data be saved
+ * @EXPOID_DISCARD: User has requested that the expo data be discarded
+ * @EXPOID_BASE_ID: First ID which can be used for expo objects
+ */
+enum expo_id_t {
+	EXPOID_NONE,
+
+	EXPOID_SAVE,
+	EXPOID_DISCARD,
+
+	EXPOID_BASE_ID = 5,
+};
 
 /**
  * enum expoact_type - types of actions reported by the expo
@@ -40,7 +62,7 @@ enum expoact_type {
  *
  * @type: Action type (EXPOACT_NONE if there is no action)
  * @select: Used for EXPOACT_POINT_ITEM and EXPOACT_SELECT
- * @id: ID number of the object affected.
+ * @select.id: ID number of the object affected.
  */
 struct expo_action {
 	enum expoact_type type;
@@ -57,11 +79,14 @@ struct expo_action {
  * @font_size: Default font size for all text
  * @menu_inset: Inset width (on each side and top/bottom) for menu items
  * @menuitem_gap_y: Gap between menu items in pixels
+ * @menu_title_margin_x: Gap between right side of menu title and left size of
+ *	menu label
  */
 struct expo_theme {
 	u32 font_size;
 	u32 menu_inset;
 	u32 menuitem_gap_y;
+	u32 menu_title_margin_x;
 };
 
 /**
@@ -122,6 +147,9 @@ struct expo_string {
  * @id: ID number of the scene
  * @title_id: String ID of title of the scene (allocated)
  * @highlight_id: ID of highlighted object, if any
+ * @cls: cread state to use for input
+ * @buf: Buffer for input
+ * @entry_save: Buffer to hold vidconsole text-entry information
  * @sibling: Node to link this scene to its siblings
  * @obj_head: List of objects in the scene
  */
@@ -131,6 +159,9 @@ struct scene {
 	uint id;
 	uint title_id;
 	uint highlight_id;
+	struct cli_line_state cls;
+	struct abuf buf;
+	struct abuf entry_save;
 	struct list_head sibling;
 	struct list_head obj_head;
 };
@@ -142,12 +173,16 @@ struct scene {
  * @SCENEOBJT_IMAGE: Image data to render
  * @SCENEOBJT_TEXT: Text line to render
  * @SCENEOBJT_MENU: Menu containing items the user can select
+ * @SCENEOBJT_TEXTLINE: Line of text the user can edit
  */
 enum scene_obj_t {
 	SCENEOBJT_NONE		= 0,
 	SCENEOBJT_IMAGE,
 	SCENEOBJT_TEXT,
+
+	/* types from here on can be highlighted */
 	SCENEOBJT_MENU,
+	SCENEOBJT_TEXTLINE,
 };
 
 /**
@@ -179,6 +214,11 @@ enum scene_obj_flags_t {
 	SCENEOF_OPEN	= 1 << 2,
 };
 
+enum {
+	/* Maximum number of characters allowed in an line editor */
+	EXPO_MAX_CHARS		= 250,
+};
+
 /**
  * struct scene_obj - information about an object in a scene
  *
@@ -188,6 +228,8 @@ enum scene_obj_flags_t {
  * @type: Type of this object
  * @dim: Dimensions for this object
  * @flags: Flags for this object
+ * @bit_length: Number of bits used for this object in CMOS RAM
+ * @start_bit: Start bit to use for this object in CMOS RAM
  * @sibling: Node to link this object to its siblings
  */
 struct scene_obj {
@@ -196,9 +238,17 @@ struct scene_obj {
 	uint id;
 	enum scene_obj_t type;
 	struct scene_dim dim;
-	int flags;
+	u8 flags;
+	u8 bit_length;
+	u16 start_bit;
 	struct list_head sibling;
 };
+
+/* object can be highlighted when moving around expo */
+static inline bool scene_obj_can_highlight(const struct scene_obj *obj)
+{
+	return obj->type >= SCENEOBJT_MENU;
+}
 
 /**
  * struct scene_obj_img - information about an image object in a scene
@@ -280,6 +330,7 @@ enum scene_menuitem_flags_t {
  * @desc_id: ID of text object to use as the description text
  * @preview_id: ID of the preview object, or 0 if none
  * @flags: Flags for this item
+ * @value: Value for this item, or INT_MAX to use sequence
  * @sibling: Node to link this item to its siblings
  */
 struct scene_menitem {
@@ -290,7 +341,38 @@ struct scene_menitem {
 	uint desc_id;
 	uint preview_id;
 	uint flags;
+	int value;
 	struct list_head sibling;
+};
+
+/**
+ * struct scene_obj_textline - information about a textline in a scene
+ *
+ * A textline has a prompt and a line of editable text
+ *
+ * @obj: Basic object information
+ * @label_id: ID of the label text, or 0 if none
+ * @edit_id: ID of the editable text
+ * @max_chars: Maximum number of characters allowed
+ * @buf: Text buffer containing current text
+ * @pos: Cursor position
+ */
+struct scene_obj_textline {
+	struct scene_obj obj;
+	uint label_id;
+	uint edit_id;
+	uint max_chars;
+	struct abuf buf;
+	uint pos;
+};
+
+/**
+ * struct expo_arrange_info - Information used when arranging a scene
+ *
+ * @label_width: Maximum width of labels in scene
+ */
+struct expo_arrange_info {
+	int label_width;
 };
 
 /**
@@ -459,15 +541,6 @@ void scene_set_highlight_id(struct scene *scn, uint id);
 int scene_set_open(struct scene *scn, uint id, bool open);
 
 /**
- * scene_title_set() - set the scene title
- *
- * @scn: Scene to update
- * @title_id: Title ID to set
- * Returns: 0 if OK
- */
-int scene_title_set(struct scene *scn, uint title_id);
-
-/**
  * scene_obj_count() - Count the number of objects in a scene
  *
  * @scn: Scene to check
@@ -502,7 +575,7 @@ int scene_txt(struct scene *scn, const char *name, uint id, uint str_id,
 	      struct scene_obj_txt **txtp);
 
 /**
- * scene_txt_str() - add a new string to expr and text object to a scene
+ * scene_txt_str() - add a new string to expo and text object to a scene
  *
  * @scn: Scene to update
  * @name: Name to use (this is allocated by this call)
@@ -526,6 +599,19 @@ int scene_txt_str(struct scene *scn, const char *name, uint id, uint str_id,
  */
 int scene_menu(struct scene *scn, const char *name, uint id,
 	       struct scene_obj_menu **menup);
+
+/**
+ *  scene_textline() - create a textline
+ *
+ * @scn: Scene to update
+ * @name: Name to use (this is allocated by this call)
+ * @id: ID to use for the new object (0 to allocate one)
+ * @max_chars: Maximum length of the textline in characters
+ * @tlinep: If non-NULL, returns the new object
+ * Returns: ID number for the object (typically @id), or -ve on error
+ */
+int scene_textline(struct scene *scn, const char *name, uint id, uint max_chars,
+		   struct scene_obj_textline **tlinep);
 
 /**
  * scene_txt_set_font() - Set the font for an object
@@ -667,7 +753,7 @@ int expo_apply_theme(struct expo *exp, ofnode node);
  *
  * Build a complete expo from a description in the provided devicetree.
  *
- * See doc/developer/expo.rst for a description of the format
+ * See doc/develop/expo.rst for a description of the format
  *
  * @root: Root node for expo description
  * @expp: Returns the new expo
@@ -677,23 +763,11 @@ int expo_apply_theme(struct expo *exp, ofnode node);
 int expo_build(ofnode root, struct expo **expp);
 
 /**
- * cedit_arange() - Arrange objects in a configuration-editor scene
+ * cb_expo_build() - Build an expo for coreboot CMOS RAM
  *
- * @exp: Expo to update
- * @vid_priv: Private info of the video device
- * @scene_id: scene ID to arrange
- * Returns: 0 if OK, -ve on error
+ * @expp: Returns the expo created
+ * Return: 0 if OK, -ve on error
  */
-int cedit_arange(struct expo *exp, struct video_priv *vid_priv, uint scene_id);
+int cb_expo_build(struct expo **expp);
 
-/**
- * cedit_run() - Run a configuration editor
- *
- * This accepts input until the user quits with Escape
- *
- * @exp: Expo to use
- * Returns: 0 if OK, -ve on error
- */
-int cedit_run(struct expo *exp);
-
-#endif /*__SCENE_H */
+#endif /*__EXPO_H */

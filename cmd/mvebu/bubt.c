@@ -5,7 +5,6 @@
  */
 
 #include <config.h>
-#include <common.h>
 #include <command.h>
 #include <env.h>
 #include <image.h>
@@ -224,8 +223,8 @@ static int mmc_burn_image(size_t image_size)
 #endif
 
 	part = EXT_CSD_EXTRACT_BOOT_PART(mmc->part_config);
-	if (part == 7)
-		part = 0;
+	if (part == EMMC_BOOT_PART_USER)
+		part = EMMC_HWPART_DEFAULT;
 
 #ifdef CONFIG_BLK
 	err = blk_dselect_hwpart(blk_desc, part);
@@ -240,9 +239,16 @@ static int mmc_burn_image(size_t image_size)
 #endif
 
 	/* SD reserves LBA-0 for MBR and boots from LBA-1,
-	 * MMC/eMMC boots from LBA-0
+	 * MMC/eMMC boots from LBA-0 and LBA-4096
 	 */
-	start_lba = IS_SD(mmc) ? 1 : 0;
+	if (IS_SD(mmc))
+		start_lba = 1;
+#ifdef CONFIG_SUPPORT_EMMC_BOOT
+	else if (part)
+		start_lba = 0;
+#endif
+	else
+		start_lba = 4096;
 #ifdef CONFIG_BLK
 	blk_count = image_size / mmc->write_bl_len;
 	if (image_size % mmc->write_bl_len)

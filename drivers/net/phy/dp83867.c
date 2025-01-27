@@ -3,13 +3,13 @@
  * TI PHY drivers
  *
  */
-#include <common.h>
 #include <log.h>
 #include <phy.h>
 #include <dm/devres.h>
 #include <linux/bitops.h>
 #include <linux/compat.h>
 #include <malloc.h>
+#include <linux/printk.h>
 
 #include <dm.h>
 #include <dt-bindings/net/ti-dp83867.h>

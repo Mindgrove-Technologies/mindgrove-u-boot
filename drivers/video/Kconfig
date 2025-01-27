@@ -7,12 +7,18 @@ menu "Graphics support"
 config VIDEO
 	bool "Enable driver model support for LCD/video"
 	depends on DM
+	imply CYCLIC
 	help
 	  This enables driver model for LCD and video devices. These support
 	  a bitmap display of various sizes and depths which can be drawn on
 	  to display a command-line console or splash screen. Enabling this
 	  option compiles in the video uclass and routes all LCD/video access
 	  through this.
+
+	  If CYCLIC is enabled (which it is by default), the cyclic subsystem
+	  is used to flush pending output to the display periodically, rather
+	  than this happening with every chunk of output. This allows for more
+	  efficient operation and faster display output.
 
 if VIDEO
 
@@ -64,8 +70,9 @@ config BACKLIGHT
 
 config VIDEO_PCI_DEFAULT_FB_SIZE
 	hex "Default framebuffer size to use if no drivers request it"
-	default 0x1000000 if X86 && PCI
-	default 0 if !(X86 && PCI)
+	default 0x1000000 if X86
+	default 0x800000 if !X86 && VIDEO_BOCHS
+	default 0x0 if !X86 && !VIDEO_BOCHS
 	help
 	  Generally, video drivers request the amount of memory they need for
 	  the frame buffer when they are bound, by setting the size field in
@@ -77,7 +84,7 @@ config VIDEO_PCI_DEFAULT_FB_SIZE
 	  devices to have a framebuffer allocated by U-Boot.
 
 	  Note: the framebuffer needs to be large enough to store all pixels at
-	  maximum resolution. For example, at 1920 x 1200 with 32 bits per
+	  maximum resolution. For example, at 2560 x 1600 with 32 bits per
 	  pixel, 2560 * 1600 * 32 / 8 = 0xfa0000 bytes are needed.
 
 config VIDEO_COPY
@@ -179,7 +186,7 @@ config CONSOLE_ROTATION
 
 config CONSOLE_TRUETYPE
 	bool "Support a console that uses TrueType fonts"
-	select CMD_SELECT_FONT
+	select X86_HARDFP if X86
 	help
 	  TrueTrype fonts can provide outline-drawing capability rather than
 	  needing to provide a bitmap for each font and size that is needed.
@@ -231,6 +238,35 @@ config NO_FB_CLEAR
 	  loads takes over the screen.  This, for example, can be used to
 	  keep splash image on screen until grub graphical boot menu starts.
 
+config VIDEO_SYNC_MS
+	int "Video-sync period in milliseconds for foreground processing"
+	default 300 if SANDBOX
+	default 100
+	help
+	  This sets the requested, maximum time before a video sync will take
+	  place, in milliseconds. Note that the time between video syncs
+	  may be longer than this, since syncs only happen when the video system
+	  is used, e.g. by outputting a character to the console.
+
+	  It may also be shorter, since the video uclass will automatically
+	  force a sync in certain situations.
+
+	  Many video-output systems require a sync operation before any output
+	  is visible. This may flush the CPU cache or perhaps copy the
+	  display contents to a hardware framebuffer. Without this, change to
+	  the video may never be displayed.
+
+config VIDEO_SYNC_CYCLIC_MS
+	int "Video-sync period in milliseconds for cyclic processing"
+	depends on CYCLIC
+	default 100 if SANDBOX
+	default 10
+	help
+	  This sets the frequency of cyclic video syncs. The cyclic system is
+	  used to ensure that when U-Boot is idle, it syncs the video. This
+	  improves the responsiveness of the command line to new characters
+	  being entered.
+
 config PANEL
 	bool "Enable panel uclass support"
 	default y
@@ -280,7 +316,6 @@ config VIDCONSOLE_AS_NAME
 
 config VIDEO_BOCHS
 	bool "Enable Bochs video emulation for QEMU"
-	depends on X86
 	help
 	  Enable this to use the Bochs video support provided in the QEMU
 	  emulator. This appears as a PCI device which U-Boot can set up to
@@ -522,6 +557,14 @@ config VIDEO_LCD_ORISETECH_OTM8009A
 	Say Y here if you want to enable support for Orise Technology
 	otm8009a 480x800 dsi 2dl panel.
 
+config VIDEO_LCD_LG_LD070WX3
+	bool "LD070WX3 DSI LCD panel support"
+	depends on PANEL && BACKLIGHT
+	select VIDEO_MIPI_DSI
+	help
+	  Say Y here if you want to enable support for LG LD070WX3
+	  800x1280 DSI video mode panel.
+
 config VIDEO_LCD_RAYDIUM_RM68200
 	bool "RM68200 DSI LCD panel support"
 	select VIDEO_MIPI_DSI
@@ -546,6 +589,24 @@ config VIDEO_LCD_RENESAS_R69328
 	  Say Y here if you want to enable support for JDI dx12d100vm0eaa
 	  IPS-LCD module with Renesas R69328 IC. The panel has a 720x1280
 	  resolution and uses 24 bit RGB per pixel.
+
+config VIDEO_LCD_SAMSUNG_LTL106HL02
+	tristate "Samsung LTL106HL02 1920x1080 DSI video mode panel"
+	depends on PANEL && BACKLIGHT
+	select VIDEO_MIPI_DSI
+	help
+	  Say Y here if you want to enable support for Samsung LTL106HL02
+	  LCD module found in Microsoft Surface 2. The panel has a FullHD
+	  resolution (1920x1080).
+
+config VIDEO_LCD_SHARP_LQ101R1SX01
+	tristate "Sharp LQ101R1SX01 2560x1600 DSI video mode panel"
+	depends on PANEL && BACKLIGHT
+	select VIDEO_MIPI_DSI
+	help
+	  Say Y here if you want to enable support for Sharp LQ101R1SX01
+	  LCD module found in ASUS Transformer TF701T. The panel has a
+	  WQXGA resolution (2560x1600).
 
 config VIDEO_LCD_SSD2828
 	bool "SSD2828 bridge chip"
@@ -959,6 +1020,14 @@ config SPLASH_SOURCE
 
 endif # SPLASH_SCREEN
 
+config BMP
+	bool "Enable bmp image display"
+	help
+	  Enable bmp functions to display bmp image and get bmp info.
+
+	  BMP is a simple graphics-image file format designed to store bitmap
+	  images. It is primarily used on Windows devices.
+
 config VIDEO_BMP_GZIP
 	bool "Gzip compressed BMP image support"
 	depends on BMP || SPLASH_SCREEN
@@ -1011,6 +1080,16 @@ config SPL_VIDEO
 if SPL_VIDEO
 source "drivers/video/tidss/Kconfig"
 
+config SPL_VIDEO_HANDOFF
+	bool "Pass the video frame-buffer through to U-Boot proper"
+	depends on SPL_BLOBLIST
+	default y if !X86
+	help
+	  Enable this to set up video-handoff information in SPL which can be
+	  picked up in U-Boot proper. This includes the frame buffer and
+	  various other pieces of information. With this enabled, SPL can set
+	  up video and avoid re-initing it later.
+
 config SPL_VIDEO_LOGO
 	bool "Show the U-Boot logo on the display at SPL"
 	default y if !SPL_SPLASH_SCREEN
@@ -1037,8 +1116,9 @@ config SPL_SYS_WHITE_ON_BLACK
 
 config SPL_VIDEO_PCI_DEFAULT_FB_SIZE
 	hex "Default framebuffer size to use if no drivers request it at SPL"
-	default 0x1000000 if X86 && PCI
-	default 0 if !(X86 && PCI)
+	default 0x1000000 if X86
+	default 0x800000 if !X86 && VIDEO_BOCHS
+	default 0x0 if !X86 && !VIDEO_BOCHS
 	help
 	  Generally, video drivers request the amount of memory they need for
 	  the frame buffer when they are bound, by setting the size field in
@@ -1050,7 +1130,7 @@ config SPL_VIDEO_PCI_DEFAULT_FB_SIZE
 	  devices to have a framebuffer allocated by U-Boot.
 
 	  Note: the framebuffer needs to be large enough to store all pixels at
-	  maximum resolution. For example, at 1920 x 1200 with 32 bits per
+	  maximum resolution. For example, at 2560 x 1600 with 32 bits per
 	  pixel, 2560 * 1600 * 32 / 8 = 0xfa0000 bytes are needed.
 
 config SPL_CONSOLE_SCROLL_LINES
@@ -1104,7 +1184,7 @@ config SPL_VIDEO_REMOVE
 	bool "Remove video driver after SPL stage"
 	help
 	  if this  option is enabled video driver will be removed at the end of
-	  SPL stage, beforeloading the next stage.
+	  SPL stage, before loading the next stage.
 
 if SPL_SPLASH_SCREEN
 
@@ -1150,6 +1230,14 @@ config SPL_SPLASH_SOURCE
 	  default name 'splash.bmp' will be used.
 
 endif # SPL_SPLASH_SCREEN
+
+config SPL_BMP
+	bool "Enable bmp image display at SPL"
+	help
+	  Enable bmp functions to display bmp image and get bmp info in SPL.
+
+	  BMP is a simple graphics-image file format designed to store bitmap
+	  images. It is primarily used on Windows devices.
 
 config SPL_VIDEO_BMP_GZIP
 	bool "Gzip compressed BMP image support at SPL"

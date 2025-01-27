@@ -15,14 +15,6 @@
 
 #define __io
 
-/* Environment options */
-
-#define BOOT_TARGET_DEVICES(func) \
-	func(MMC, mmc, 1) \
-	func(DHCP, dhcp, na)
-
-#include <config_distro_bootcmd.h>
-
 #define TYPE_GUID_SPL		"2E54B353-1271-4842-806F-E436D6AF6985"
 #define TYPE_GUID_UBOOT	"BC13C2FF-59E6-4262-A352-B275FD6F7172"
 #define TYPE_GUID_SYSTEM	"EBD0A0A2-B9E5-4433-87C0-68B6B72699C7"
@@ -37,6 +29,7 @@
 	"kernel_comp_addr_r=0x88000000\0" \
 	"kernel_comp_size=0x4000000\0" \
 	"fdt_addr_r=0x46000000\0" \
+	"fdtoverlay_addr_r=0x45800000\0" \
 	"scriptaddr=0x43900000\0" \
 	"pxefile_addr_r=0x45900000\0" \
 	"ramdisk_addr_r=0x46100000\0" \
@@ -44,7 +37,6 @@
 	"type_guid_gpt_loader2=" TYPE_GUID_UBOOT "\0" \
 	"type_guid_gpt_system=" TYPE_GUID_SYSTEM "\0" \
 	"partitions=" PARTS_DEFAULT "\0" \
-	"fdtfile=" CONFIG_DEFAULT_FDT_FILE "\0" \
-	BOOTENV
+	"fdtfile=" CONFIG_DEFAULT_FDT_FILE "\0"
 
 #endif /* _STARFIVE_VISIONFIVE2_H */

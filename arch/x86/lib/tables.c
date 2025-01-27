@@ -5,7 +5,6 @@
 
 #define LOG_CATEGORY LOGC_ACPI
 
-#include <common.h>
 #include <bloblist.h>
 #include <log.h>
 #include <malloc.h>
@@ -16,6 +15,8 @@
 #include <asm/mpspec.h>
 #include <asm/tables.h>
 #include <asm/coreboot_tables.h>
+#include <linux/log2.h>
+#include <linux/sizes.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -59,10 +60,14 @@ static struct table_info table_list[] = {
 	 * that the calculation of gd->table_end works properly
 	 */
 #ifdef CONFIG_GENERATE_ACPI_TABLE
-	{ "acpi", write_acpi_tables, BLOBLISTT_ACPI_TABLES, 0x10000, 0x1000},
+	{ "acpi", write_acpi_tables, BLOBLISTT_ACPI_TABLES, SZ_64K, SZ_4K},
 #endif
 #ifdef CONFIG_GENERATE_SMBIOS_TABLE
-	{ "smbios", write_smbios_table, BLOBLISTT_SMBIOS_TABLES, 0x1000, 0x100},
+	/*
+	 * align this to a 4K boundary, since UPL adds a reserved-memory node
+	 * for it
+	 */
+	{ "smbios", write_smbios_table, BLOBLISTT_SMBIOS_TABLES, SZ_4K, SZ_4K},
 #endif
 };
 
@@ -97,11 +102,16 @@ int write_tables(void)
 		int size = table->size ? : CONFIG_ROM_TABLE_SIZE;
 		u32 rom_table_end;
 
+		rom_addr = ALIGN(rom_addr, 16);
+
+		if (!strcmp("smbios", table->name))
+			gd->arch.smbios_start = rom_addr;
+
 		if (IS_ENABLED(CONFIG_BLOBLIST_TABLES) && table->tag) {
 			if (!gd->arch.table_end)
 				gd->arch.table_end = rom_addr;
 			rom_addr = (ulong)bloblist_add(table->tag, size,
-						       table->align);
+						       ilog2(table->align));
 			if (!rom_addr)
 				return log_msg_ret("bloblist", -ENOBUFS);
 

@@ -7,6 +7,7 @@
 #include <dm.h>
 #include <fdt_support.h>
 #include <linux/soc/ti/ti_sci_protocol.h>
+#include "common_fdt.h"
 
 static int fdt_fixup_msmc_ram(void *blob, char *parent_path, char *node_name)
 {
@@ -64,6 +65,7 @@ static int fdt_fixup_msmc_ram(void *blob, char *parent_path, char *node_name)
 		      subnode, addr, size);
 		if (addr + size > msmc_size ||
 		    !strncmp(fdt_get_name(blob, subnode, &len), "sysfw", 5) ||
+		    !strncmp(fdt_get_name(blob, subnode, &len), "tifs", 4)  ||
 		    !strncmp(fdt_get_name(blob, subnode, &len), "l3cache", 7)) {
 			fdt_del_node(blob, subnode);
 			debug("%s: deleting subnode %d\n", __func__, subnode);
@@ -110,4 +112,56 @@ int fdt_del_node_path(void *blob, const char *path)
 		debug("Deleted node %s\n", path);
 
 	return ret;
+}
+
+int fdt_fixup_reserved(void *blob, const char *name,
+		       unsigned int new_address, unsigned int new_size)
+{
+	int nodeoffset, subnode;
+	int ret;
+
+	/* Find reserved-memory */
+	nodeoffset = fdt_subnode_offset(blob, 0, "reserved-memory");
+	if (nodeoffset < 0) {
+		debug("Could not find reserved-memory node\n");
+		return 0;
+	}
+
+	/* Find existing matching subnode and remove it */
+	fdt_for_each_subnode(subnode, blob, nodeoffset) {
+		const char *node_name;
+		fdt_addr_t addr;
+		fdt_size_t size;
+
+		/* Name matching */
+		node_name = fdt_get_name(blob, subnode, NULL);
+		if (!name)
+			return -EINVAL;
+		if (!strncmp(node_name, name, strlen(name))) {
+			/* Read out old size first */
+			addr = fdtdec_get_addr_size(blob, subnode, "reg", &size);
+			if (addr == FDT_ADDR_T_NONE)
+				return -EINVAL;
+			new_size = size;
+
+			/* Delete node */
+			ret = fdt_del_node(blob, subnode);
+			if (ret < 0)
+				return ret;
+
+			/* Only one matching node */
+			break;
+		}
+	}
+
+	struct fdt_memory carveout = {
+		.start = new_address,
+		.end = new_address + new_size - 1,
+	};
+	ret = fdtdec_add_reserved_memory(blob, name, &carveout, NULL, 0, NULL,
+					 FDTDEC_RESERVED_MEMORY_NO_MAP);
+	if (ret < 0)
+		return ret;
+
+	return 0;
 }

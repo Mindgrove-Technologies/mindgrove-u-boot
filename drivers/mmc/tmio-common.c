@@ -4,7 +4,6 @@
  *   Author: Masahiro Yamada <yamada.masahiro@socionext.com>
  */
 
-#include <common.h>
 #include <clk.h>
 #include <cpu_func.h>
 #include <fdtdec.h>
@@ -122,7 +121,10 @@ static int tmio_sd_wait_for_irq(struct udevice *dev, struct mmc_cmd *cmd,
 	long wait = 1000000;
 	int ret;
 
-	while (!(tmio_sd_readl(priv, reg) & flag)) {
+	while (true) {
+		if (tmio_sd_readl(priv, reg) & flag)
+			return tmio_sd_check_error(dev, cmd);
+
 		if (wait-- < 0) {
 			dev_err(dev, "timeout\n");
 			return -ETIMEDOUT;
@@ -296,7 +298,13 @@ static int tmio_sd_dma_wait_for_irq(struct udevice *dev, u32 flag,
 	struct tmio_sd_priv *priv = dev_get_priv(dev);
 	long wait = 1000000 + 10 * blocks;
 
-	while (!(tmio_sd_readl(priv, TMIO_SD_DMA_INFO1) & flag)) {
+	for (;;) {
+		if (tmio_sd_readl(priv, TMIO_SD_DMA_INFO1) & flag)
+			break;
+
+		if (tmio_sd_readl(priv, TMIO_SD_INFO1) & TMIO_SD_INFO1_CMP)
+			break;
+
 		if (wait-- < 0) {
 			dev_err(dev, "timeout during DMA\n");
 			return -ETIMEDOUT;
@@ -377,7 +385,7 @@ static bool tmio_sd_addr_is_dmaable(struct mmc_data *data)
 			return false;
 	}
 
-#ifdef CONFIG_SPL_BUILD
+#ifdef CONFIG_XPL_BUILD
 	if (IS_ENABLED(CONFIG_ARCH_UNIPHIER) && !IS_ENABLED(CONFIG_ARM64)) {
 		/*
 		 * For UniPhier ARMv7 SoCs, the stack is allocated in locked
@@ -756,7 +764,8 @@ int tmio_sd_probe(struct udevice *dev, u32 quirks)
 	dev_dbg(dev, "version %x\n", priv->version);
 	if (priv->version >= 0x10) {
 		priv->caps |= TMIO_SD_CAP_DMA_INTERNAL;
-		priv->caps |= TMIO_SD_CAP_DIV1024;
+		if (!(priv->caps & TMIO_SD_CAP_RCAR))
+			priv->caps |= TMIO_SD_CAP_DIV1024;
 	}
 
 	if (fdt_get_property(gd->fdt_blob, dev_of_offset(dev), "non-removable",

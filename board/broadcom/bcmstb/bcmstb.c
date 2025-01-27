@@ -12,7 +12,6 @@
 #include <time.h>
 #include <asm/global_data.h>
 #include <linux/types.h>
-#include <common.h>
 #include <env.h>
 #include <asm/io.h>
 #include <asm/bootm.h>
@@ -131,9 +130,10 @@ int board_late_init(void)
 	return 0;
 }
 
-void *board_fdt_blob_setup(int *err)
+int board_fdt_blob_setup(void **fdtp)
 {
-	*err = 0;
 	/* Stored the DTB address there during our init */
-	return (void *)prior_stage_fdt_address;
+	*fdtp = (void *)prior_stage_fdt_address;
+
+	return 0;
 }

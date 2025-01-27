@@ -6,7 +6,6 @@
  * Copyright © 2006 Marvell International Ltd.
  */
 
-#include <common.h>
 #include <malloc.h>
 #include <fdtdec.h>
 #include <nand.h>
@@ -22,6 +21,7 @@
 #include <asm/arch/cpu.h>
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/rawnand.h>
+#include <linux/printk.h>
 #include <linux/types.h>
 #include <syscon.h>
 #include <regmap.h>
@@ -799,6 +799,11 @@ static void prepare_start_command(struct pxa3xx_nand_info *info, int command)
 	info->ecc_err_cnt	= 0;
 	info->ndcb3		= 0;
 	info->need_wait		= 0;
+	/*
+	 * Reset max_bitflips to zero. Once command is complete,
+	 * max_bitflips for this READ is returned in ecc.read_page()
+	 */
+	info->max_bitflips	= 0;
 
 	switch (command) {
 	case NAND_CMD_READ0:
