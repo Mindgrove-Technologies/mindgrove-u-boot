@@ -1,0 +1,68 @@
+/dts-v1/;
+
+/ {
+  #address-cells = <2>;
+  #size-cells = <2>;
+  compatible = "mindgrove,socs";
+  model = "mindgrove,secure-iot";
+  cpus {
+    #address-cells = <1>;
+    #size-cells = <0>;
+    timebase-frequency = <32768>;
+    CPU0: cpu@0 {
+      device_type = "cpu";
+      reg = <0>;
+      status = "okay";
+      compatible = "riscv";
+      riscv,isa = "rv64imafdc";
+      mmu-type = "riscv,sv39";
+      clock-frequency = <700000000>;
+      CPU0_intc: interrupt-controller {
+        #interrupt-cells = <1>;
+        interrupt-controller;
+        compatible = "riscv,cpu-intc";
+      };
+    };
+  };
+  memory@80000000 {
+    device_type = "memory";
+    reg = <0x0 0x80000000 0x0  0x00020000>;
+  };
+  soc {
+    #address-cells = <2>;
+    #size-cells = <2>;
+    compatible = "mindgrove,secure-iot-soc", "simple-bus";
+    ranges;
+    clint@2000000 {
+      compatible = "riscv,clint0";
+      interrupts-extended = <&CPU0_intc 3 &CPU0_intc 7 >;
+      reg = <0x0 0x2000000 0x0 0xc0000>;
+    };
+   clock: oscillator {
+     #clock-cells = <0>;
+     compatible = "fixed-clock";
+     clock-frequency = <700000000>;
+   };
+   spi:spi@20100{
+     compatible = "shakti,spi1";
+     reg = <0x0 0x20100 0x0 0x100>;
+     clocks = <&clock>;			// Reference to Hardware Clock
+     shakti,controller = <1>;                  // 1 for MASTER and 0 for SLAVE...
+     shakti,spi-frequency = <3500000>;	// SPI Working Frequency
+     shakti,lsb-first = <0x0>;                 // 1 for LSB first and 0 for MSB first... 
+     shakti,communication-mode = <0x3>;        // Communication Mode 0-3 value. Other values cause the driver to fail.
+     shakti,cs-high = <0x1>;			// Chip-select active
+     shakti,fifo-depth = <16>;			// The FIFO length value in bytes (32 level cannot be used here).
+     mmc-slot@0 {
+       compatible = "mmc-spi-slot";
+       reg = <0>;
+       voltage-ranges = <3300 3300>;
+       spi-max-frequency = <3500000>;  	 // This value should be greater than shakti,spi-frequency
+     };
+   };
+  };
+ uart {
+  compatible = "mindgrove,uart0";
+  reg= <0x0 0x11300 0x0 0x1000>;
+ };
+};

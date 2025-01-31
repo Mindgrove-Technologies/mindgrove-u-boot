@@ -1,5 +1,5 @@
-#ifndef __SHAKTI_CONFIG_H
-#define __SHAKTI_CONFIG_H
+#ifndef __SECURE_IOT_CONFIG_H
+#define __SECURE_IOT_CONFIG_H
 
 #include <linux/sizes.h>
 
@@ -72,5 +72,5 @@
 	"fdt addr ${fdtcontroladdr};"
 #endif
 
-#endif /* __SHAKTI_CONFIG_H */
+#endif /* __SECURE_IOT_CONFIG_H */
 

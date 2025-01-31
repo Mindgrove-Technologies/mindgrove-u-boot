@@ -1,4 +1,4 @@
-#include <common.h>
+// #include <common.h>
 #include <clk.h>
 #include <debug_uart.h>
 #include <dm.h>
@@ -81,7 +81,7 @@ static int _shakti_serial_getc(struct shakti_uart_plat *plat)
 	int c;
 
     while ((readw(plat->regs + REG_STATUS) & STS_RX_NOT_EMPTY) == 0);
-    return readw(plat->regs + REG_RX);
+    return readb(plat->regs + REG_RX);
 }
 
 static int _shakti_serial_putc(struct shakti_uart_plat *plat, const char ch)
@@ -89,7 +89,7 @@ static int _shakti_serial_putc(struct shakti_uart_plat *plat, const char ch)
 	int rc;
 
 	while(readw(plat->regs + REG_STATUS) &  STS_TX_FULL);
-	writel(ch, plat->regs + REG_TX);
+	writeb(ch, plat->regs + REG_TX);
 /*
     if ((ch == '\n') || (ch == '\r')) {
 	    writeb('\n', plat->regs + REG_TX);

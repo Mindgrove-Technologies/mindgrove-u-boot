@@ -455,6 +455,15 @@ config DEBUG_UART_SHAKTI
 	  will need to provide parameters to make this work. The driver will
 	  be available until the real driver-model serial is running.
 
+
+config DEBUG_UART_MINDGROVE
+	bool "MINDGROVE UART"
+	depends on MINDGROVE_SERIAL
+	help
+	  Select this to enable a debug UART using the serial_mindgrove driver. You
+	  will need to provide parameters to make this work. The driver will
+	  be available until the real driver-model serial is running.
+
 config DEBUG_UART_SIFIVE
 	bool "SiFive UART"
 	depends on SIFIVE_SERIAL
@@ -1073,6 +1082,12 @@ config SHAKTI_SERIAL
 	depends on DM_SERIAL
 	help
 	  This driver supports the Shakti UART. If unsure say N.
+
+config MINDGROVE_SERIAL
+	bool "Mindgrove UART support"
+	depends on DM_SERIAL
+	help
+	  This driver supports the Mindgrove UART. If unsure say N.
 
 config SIFIVE_SERIAL
 	bool "SiFive UART support"
