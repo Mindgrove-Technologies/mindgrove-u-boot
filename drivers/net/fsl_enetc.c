@@ -5,6 +5,8 @@
  * Copyright 2023-2025 NXP
  */
 
+#include <clk.h>
+#include <cpu_func.h>
 #include <dm.h>
 #include <errno.h>
 #include <fdt_support.h>
@@ -472,13 +474,15 @@ static int enetc_init_sxgmii(struct udevice *dev)
 /* Apply protocol specific configuration to MAC, serdes as needed */
 static void enetc_start_pcs(struct udevice *dev)
 {
+	struct enetc_data *data = (struct enetc_data *)dev_get_driver_data(dev);
 	struct enetc_priv *priv = dev_get_priv(dev);
 
 	/* register internal MDIO for debug purposes */
 	if (enetc_read_pcapr_mdio(dev)) {
 		priv->imdio.read = enetc_mdio_read;
 		priv->imdio.write = enetc_mdio_write;
-		priv->imdio.priv = priv->port_regs + ENETC_PM_IMDIO_BASE;
+		priv->imdio.priv = priv->port_regs + data->reg_offset_mac +
+		                   ENETC_PM_IMDIO_BASE;
 		strlcpy(priv->imdio.name, dev->name, MDIO_NAME_LEN);
 		if (!miiphy_get_dev_by_name(priv->imdio.name))
 			mdio_register(&priv->imdio);
@@ -981,11 +985,31 @@ static const struct eth_ops enetc_ops_imx = {
 	.read_rom_hwaddr	= enetc_read_rom_hwaddr,
 };
 
+static int enetc_probe_imx(struct udevice *dev)
+{
+	struct clk *clk;
+	int ret;
+
+	clk = devm_clk_get_optional(dev, "ref");
+	if (IS_ERR(clk))
+		return PTR_ERR(clk);
+
+	ret = clk_enable(clk);
+	if (ret)
+		return ret;
+
+	ret = enetc_probe(dev);
+	if (ret)
+		clk_disable(clk);
+
+	return ret;
+}
+
 U_BOOT_DRIVER(eth_enetc_imx) = {
 	.name		= ENETC_DRIVER_NAME,
 	.id		= UCLASS_ETH,
 	.bind		= enetc_bind,
-	.probe		= enetc_probe,
+	.probe		= enetc_probe_imx,
 	.remove		= enetc_remove,
 	.ops		= &enetc_ops_imx,
 	.priv_auto	= sizeof(struct enetc_priv),

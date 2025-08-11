@@ -4,6 +4,7 @@
  */
 
 #include <asm/io.h>
+#include <dbsc5.h>
 #include <dm.h>
 #include <errno.h>
 #include <hang.h>
@@ -11,13 +12,6 @@
 #include <linux/iopoll.h>
 #include <linux/sizes.h>
 #include "dbsc5.h"
-
-/* The number of channels V4H has */
-#define DRAM_CH_CNT			4
-/* The number of slices V4H has */
-#define SLICE_CNT			2
-/* The number of chip select V4H has */
-#define CS_CNT				2
 
 /* Number of array elements in Data Slice */
 #define DDR_PHY_SLICE_REGSET_SIZE_V4H	0x100
@@ -220,6 +214,7 @@ static const u16 jedec_spec2_tRFC_ab[] = {
 #define PHY_RDLVL_RDDQS_DQ_TE_DLY_OBS		DDR_REGDEF(0x00, 0x09, 0x103F)
 #define PHY_WDQLVL_STATUS_OBS			DDR_REGDEF(0x00, 0x20, 0x1043)
 #define PHY_DATA_DC_CAL_START			DDR_REGDEF(0x18, 0x01, 0x104D)
+#define PHY_SLV_DLY_CTRL_GATE_DISABLE		DDR_REGDEF(0x10, 0x01, 0x104E)
 #define PHY_REGULATOR_EN_CNT			DDR_REGDEF(0x18, 0x06, 0x1050)
 #define PHY_VREF_INITIAL_START_POINT		DDR_REGDEF(0x00, 0x09, 0x1055)
 #define PHY_VREF_INITIAL_STOP_POINT		DDR_REGDEF(0x10, 0x09, 0x1055)
@@ -469,7 +464,7 @@ static const u32 DDR_PHY_SLICE_REGSET_V4H[DDR_PHY_SLICE_REGSET_NUM_V4H] = {
 	0x00000000, 0x00500050, 0x00500050, 0x00500050,
 	0x00500050, 0x0D000050, 0x10100004, 0x06102010,
 	0x61619041, 0x07097000, 0x00644180, 0x00803280,
-	0x00808001, 0x13010100, 0x02000016, 0x10001003,
+	0x00808001, 0x13010101, 0x02000016, 0x10001003,
 	0x06093E42, 0x0F063D01, 0x011700C8, 0x04100140,
 	0x00000100, 0x000001D1, 0x05000068, 0x00030402,
 	0x01400000, 0x80800300, 0x00160010, 0x76543210,
@@ -512,8 +507,8 @@ static const u32 DDR_PHY_ADR_G_REGSET_V4H[DDR_PHY_ADR_G_REGSET_NUM_V4H] = {
 	0x00040101, 0x00000000, 0x00000000, 0x00000064,
 	0x00000000, 0x00000000, 0x39421B42, 0x00010124,
 	0x00520052, 0x00000052, 0x00000000, 0x00000000,
-	0x00000000, 0x00000000, 0x00000000, 0x00000000,
-	0x00000000, 0x00000000, 0x00000000, 0x07030102,
+	0x00010001, 0x00000000, 0x00000000, 0x00010001,
+	0x00000000, 0x00000000, 0x00010001, 0x07030102,
 	0x01030307, 0x00000054, 0x00004096, 0x08200820,
 	0x08200820, 0x08200820, 0x08200820, 0x00000820,
 	0x004103B8, 0x0000003F, 0x000C0006, 0x00000000,
@@ -1294,7 +1289,7 @@ static const struct dbsc5_table_patch dbsc5_table_patch_slice_mbpsdiv_572 = {
 };
 
 static const struct dbsc5_table_patch dbsc5_table_patch_adr_g_mbpsdiv_572 = {
-	PHY_PAD_ACS_RX_PCLK_CLK_SEL, 0x03
+	PHY_PAD_ACS_RX_PCLK_CLK_SEL, 0x02
 };
 
 static const struct dbsc5_table_patch dbsc5_table_patch_adr_g_mbpsdiv_400[] = {
@@ -1330,6 +1325,11 @@ static const u32 PI_DARRAY3_1_CSx_Fx[CS_CNT][3] = {
 #define DBSC_DBACEN			0x200
 #define DBSC_DBRFEN			0x204
 #define DBSC_DBCMD			0x208
+#define DBSC_DBCMD_CMD_OPCODE_PD	0x8
+#define DBSC_DBCMD_CMD_OPCODE_MRW	0xe
+#define DBSC_DBCMD_CMD_OPCODE_MRR	0xf
+#define DBSC_DBCMD_CMD_CHANNEL_ALL	0x8
+#define DBSC_DBCMD_CMD_RANK_ALL		0x4
 #define DBSC_DBWAIT			0x210
 #define DBSC_DBBL			0x400
 #define DBSC_DBBLA			0x400
@@ -1373,46 +1373,6 @@ static const u32 PI_DARRAY3_1_CSx_Fx[CS_CNT][3] = {
 #define CPG_PLLECR_PLL3ST_BIT		BIT(11)
 
 #define CLK_DIV(a, diva, b, divb)	(((a) * (divb)) / ((b) * (diva)))
-
-struct renesas_dbsc5_board_config {
-	/* Channels in use */
-	u8 bdcfg_phyvalid;
-	/* Read vref (SoC) training range */
-	u32 bdcfg_vref_r;
-	/* Write vref (MR14, MR15) training range */
-	u16 bdcfg_vref_w;
-	/* CA vref (MR12) training range */
-	u16 bdcfg_vref_ca;
-	/* RFM required check */
-	bool bdcfg_rfm_chk;
-
-	/* Board parameter about channels */
-	struct {
-		/*
-		 * 0x00:  4Gb dual channel die /  2Gb single channel die
-		 * 0x01:  6Gb dual channel die /  3Gb single channel die
-		 * 0x02:  8Gb dual channel die /  4Gb single channel die
-		 * 0x03: 12Gb dual channel die /  6Gb single channel die
-		 * 0x04: 16Gb dual channel die /  8Gb single channel die
-		 * 0x05: 24Gb dual channel die / 12Gb single channel die
-		 * 0x06: 32Gb dual channel die / 16Gb single channel die
-		 * 0x07: 24Gb single channel die
-		 * 0x08: 32Gb single channel die
-		 * 0xFF: NO_MEMORY
-		 */
-		u8 bdcfg_ddr_density[CS_CNT];
-		/* SoC caX([6][5][4][3][2][1][0]) -> MEM caY: */
-		u32 bdcfg_ca_swap;
-		/* SoC dqsX([1][0]) -> MEM dqsY: */
-		u8 bdcfg_dqs_swap;
-		/* SoC dq([7][6][5][4][3][2][1][0]) -> MEM dqY/dm:  (8 means DM) */
-		u32 bdcfg_dq_swap[SLICE_CNT];
-		/* SoC dm -> MEM dqY/dm:  (8 means DM) */
-		u8 bdcfg_dm_swap[SLICE_CNT];
-		/* SoC ckeX([1][0]) -> MEM csY */
-		u8 bdcfg_cs_swap;
-	} ch[4];
-};
 
 struct renesas_dbsc5_dram_priv {
 	void __iomem	*regs;
@@ -1713,14 +1673,17 @@ static void dbsc5_clk_wait_dbpdstat1(struct udevice *dev, u32 status)
 {
 	struct renesas_dbsc5_dram_priv *priv = dev_get_priv(dev);
 	void __iomem *regs_dbsc_d = priv->regs + DBSC5_DBSC_D_OFFSET;
-	u32 i, ch, reg;
+	u32 i, ch, chk, reg;
 
 	for (i = 0; i < 2; i++) {
 		do {
 			reg = status;
-			r_foreach_vch(dev, ch)
+			chk = 0;
+			r_foreach_vch(dev, ch) {
 				reg &= readl(regs_dbsc_d + DBSC_DBPDSTAT1(ch));
-		} while (reg != status);
+				chk |= readl(regs_dbsc_d + DBSC_DBPDSTAT0(ch));
+			}
+		} while (reg != status && !(chk & BIT(0)));
 	}
 }
 
@@ -1778,23 +1741,19 @@ static void dbsc5_reg_write(void __iomem *addr, u32 data)
 }
 
 /**
- * dbsc5_reg_write() - DRAM Command Write Access
+ * dbsc5_wait_dbwait() - DRAM Command Wait Access Completion
  * @dev: DBSC5 device
- * @cmd DRAM command.
  *
- * First, execute the dummy read to DBSC_DBCMD.
- * Confirm that no DBSC command operation is in progress 0.
- * Write the contents of the command to be sent to DRAM.
+ * Wait for DRAM access completion. This is used before sending a command
+ * to the DRAM to assure no other command is in flight already, or while
+ * waiting for MRR command to complete.
  */
-static void dbsc5_send_dbcmd2(struct udevice *dev, u32 cmd)
+static void dbsc5_wait_dbwait(struct udevice *dev)
 {
 	struct renesas_dbsc5_dram_priv *priv = dev_get_priv(dev);
 	void __iomem *regs_dbsc_d = priv->regs + DBSC5_DBSC_D_OFFSET;
 	u32 val;
 	int ret;
-
-	/* dummy read */
-	readl(regs_dbsc_d + DBSC_DBCMD);
 
 	ret = readl_poll_timeout(regs_dbsc_d + DBSC_DBWAIT, val, ((val & BIT(0)) == 0), 1000000);
 	if (ret < 0) {
@@ -1807,6 +1766,32 @@ static void dbsc5_send_dbcmd2(struct udevice *dev, u32 cmd)
 		printf("%s DBWAIT + 0x4000 bit 0 timeout\n", __func__);
 		hang();
 	}
+}
+
+/**
+ * dbsc5_send_dbcmd2() - DRAM Command Write Access
+ * @dev: DBSC5 device
+ * @opcode DRAM controller opcode
+ * @channel DRAM controller channel (0..3)
+ * @rank DRAM controller rank (0..1)
+ * @arg Command and argument bits (command specific encoding)
+ *
+ * First, execute the dummy read to DBSC_DBCMD.
+ * Confirm that no DBSC command operation is in progress 0.
+ * Write the contents of the command to be sent to DRAM.
+ */
+static void dbsc5_send_dbcmd2(struct udevice *dev, const u8 opcode,
+			      const u8 channel, const u8 rank,
+			      const u16 arg)
+{
+	const u32 cmd = (opcode << 24) | (channel << 20) | (rank << 16) | arg;
+	struct renesas_dbsc5_dram_priv *priv = dev_get_priv(dev);
+	void __iomem *regs_dbsc_d = priv->regs + DBSC5_DBSC_D_OFFSET;
+
+	/* dummy read */
+	readl(regs_dbsc_d + DBSC_DBCMD);
+
+	dbsc5_wait_dbwait(dev);
 
 	dbsc5_reg_write(regs_dbsc_d + DBSC_DBCMD, cmd);
 }
@@ -2192,7 +2177,7 @@ static void dbsc5_ddrtbl_calc(struct renesas_dbsc5_dram_priv *priv)
 		if (js1[i].fx3 * 2 * priv->ddr_mbpsdiv >= priv->ddr_mbps * 3)
 			break;
 
-	priv->js1_ind = max(i, JS1_USABLEC_SPEC_HI);
+	priv->js1_ind = clamp(i, 0, JS1_USABLEC_SPEC_HI);
 
 	priv->RL = js1[priv->js1_ind].RLset1;
 	priv->WL = js1[priv->js1_ind].WLsetA;
@@ -2635,7 +2620,7 @@ static void dbsc5_dbsc_regset(struct udevice *dev)
 	 */
 	dbsc5_reg_write(regs_dbsc_d + DBSC_DBTR(11),
 			priv->RL + 4 + priv->js2[JS2_tWCK2DQO_HF] -
-			js1[priv->js1_ind].ODTLon - priv->js2[JS2_tODTon_min]);
+			js1[priv->js1_ind].ODTLon - priv->js2[JS2_tODTon_min] + 2);
 
 	/* DBTR12.TWRRD_S : WL + BL/2 + tWTR_S, TWRRD_L : WL + BL + tWTR_L */
 	dbsc5_reg_write(regs_dbsc_d + DBSC_DBTR(12),
@@ -2992,10 +2977,14 @@ static u32 dbsc5_pi_training(struct udevice *dev)
 		writel(0x21, regs_dbsc_d + DBSC_DBDFICNT(ch));
 
 	/* Dummy PDE */
-	dbsc5_send_dbcmd2(dev, 0x8840000);
+	dbsc5_send_dbcmd2(dev, DBSC_DBCMD_CMD_OPCODE_PD,
+			  DBSC_DBCMD_CMD_CHANNEL_ALL,
+			  DBSC_DBCMD_CMD_RANK_ALL, 0);
 
 	/* PDX */
-	dbsc5_send_dbcmd2(dev, 0x8840001);
+	dbsc5_send_dbcmd2(dev, DBSC_DBCMD_CMD_OPCODE_PD,
+			  DBSC_DBCMD_CMD_CHANNEL_ALL,
+			  DBSC_DBCMD_CMD_RANK_ALL, 1);
 
 	/* Wait init_complete */
 	for (retry = 0; retry < retry_max; retry++) {
@@ -3491,13 +3480,10 @@ static void dbsc5_manual_write_dca(struct udevice *dev)
 {
 	struct renesas_dbsc5_dram_priv *priv = dev_get_priv(dev);
 	const u32 rank = priv->ch_have_this_cs[1] ? 0x2 : 0x1;
-	u32 slv_dly_center[DRAM_CH_CNT][CS_CNT][SLICE_CNT];
-	u32 slv_dly_center_cyc;
-	u32 slv_dly_center_dly;
+	u32 phy_slv_dly[DRAM_CH_CNT][CS_CNT][SLICE_CNT];
+	u32 phy_slv_dly_avg[DRAM_CH_CNT][SLICE_CNT];
 	u32 slv_dly_min[DRAM_CH_CNT][SLICE_CNT];
 	u32 slv_dly_max[DRAM_CH_CNT][SLICE_CNT];
-	u32 slv_dly_min_tmp[DRAM_CH_CNT][CS_CNT][SLICE_CNT];
-	u32 slv_dly_max_tmp[DRAM_CH_CNT][CS_CNT][SLICE_CNT];
 	u32 phy_dcc_code_min[DRAM_CH_CNT][SLICE_CNT];
 	u32 phy_dcc_code_max[DRAM_CH_CNT][SLICE_CNT];
 	u32 phy_dcc_code_mid;
@@ -3521,18 +3507,9 @@ static void dbsc5_manual_write_dca(struct udevice *dev)
 		dbsc5_ddr_setval_all_ch_all_slice(dev, PHY_PER_CS_TRAINING_INDEX, cs);
 		r_foreach_vch(dev, ch) {
 			for (slice = 0; slice < SLICE_CNT; slice++) {
-				slv_dly_center[ch][cs][slice] =
-					dbsc5_ddr_getval_slice(dev, ch, slice, PHY_CLK_WRDQS_SLAVE_DELAY);
-				slv_dly_center_cyc = slv_dly_center[ch][cs][slice] & 0x180;
-				slv_dly_center_dly = slv_dly_center[ch][cs][slice] & 0x7F;
-				slv_dly_min_tmp[ch][cs][slice] =
-					slv_dly_center_cyc |
-					(slv_dly_center_dly * ratio_min / ratio_min_div);
-				slv_dly_max_tmp[ch][cs][slice] = slv_dly_center_cyc;
-				if ((slv_dly_center_dly * ratio_max) > (0x7F * ratio_max_div))
-					slv_dly_max_tmp[ch][cs][slice] |= 0x7F;
-				else
-					slv_dly_max_tmp[ch][cs][slice] |= slv_dly_center_dly * ratio_max / ratio_max_div;
+				phy_slv_dly[ch][cs][slice] =
+					dbsc5_ddr_getval_slice(dev, ch, slice,
+							       PHY_CLK_WRDQS_SLAVE_DELAY);
 			}
 		}
 	}
@@ -3540,21 +3517,21 @@ static void dbsc5_manual_write_dca(struct udevice *dev)
 	r_foreach_vch(dev, ch) {
 		for (slice = 0; slice < SLICE_CNT; slice++) {
 			if (rank == 0x2) {
-				if (slv_dly_max_tmp[ch][0][slice] < slv_dly_max_tmp[ch][1][slice])
-					slv_dly_max[ch][slice] = slv_dly_max_tmp[ch][1][slice];
-				else
-					slv_dly_max[ch][slice] = slv_dly_max_tmp[ch][0][slice];
-
-				if (slv_dly_min_tmp[ch][0][slice] < slv_dly_min_tmp[ch][1][slice])
-					slv_dly_min[ch][slice] = slv_dly_min_tmp[ch][0][slice];
-				else
-					slv_dly_min[ch][slice] = slv_dly_min_tmp[ch][1][slice];
+				/* Calculate average between ranks */
+				phy_slv_dly_avg[ch][slice] = (phy_slv_dly[ch][0][slice] +
+							      phy_slv_dly[ch][1][slice]) / 2;
 			} else {
-				slv_dly_max[ch][slice] = slv_dly_max_tmp[ch][0][slice];
-				slv_dly_min[ch][slice] = slv_dly_min_tmp[ch][0][slice];
+				phy_slv_dly_avg[ch][slice] = phy_slv_dly[ch][0][slice];
 			}
+			/* Determine the search range */
+			slv_dly_min[ch][slice] = (phy_slv_dly_avg[ch][slice] & 0x07F) * ratio_min / ratio_min_div;
+			slv_dly_max[ch][slice] = (phy_slv_dly_avg[ch][slice] & 0x07F) * ratio_max / ratio_max_div;
+			if (slv_dly_max[ch][slice] > 0x7F)
+				slv_dly_max[ch][slice] = 0x7F;
 		}
 	}
+
+	dbsc5_ddr_setval_all_ch_all_slice(dev, PHY_SLV_DLY_CTRL_GATE_DISABLE, 0x1);
 
 	for (i = 0; i <= 0x7F; i++) {
 		r_foreach_vch(dev, ch) {
@@ -3621,13 +3598,16 @@ static void dbsc5_manual_write_dca(struct udevice *dev)
 			for (slice = 0; slice < SLICE_CNT; slice++) {
 				dbsc5_ddr_setval_slice(dev, ch, slice,
 						       PHY_CLK_WRDQS_SLAVE_DELAY,
-						       slv_dly_center[ch][cs][slice]);
+						       phy_slv_dly[ch][cs][slice]);
 				dbsc5_ddr_setval_slice(dev, ch, slice,
 						       SC_PHY_WCK_CALC, 0x1);
 				dbsc5_ddr_setval(dev, ch, SC_PHY_MANUAL_UPDATE, 0x1);
 			}
 		}
 	}
+
+	dbsc5_ddr_setval_all_ch_all_slice(dev, PHY_SLV_DLY_CTRL_GATE_DISABLE, 0x0);
+
 	dbsc5_ddr_setval_all_ch_all_slice(dev, PHY_PER_CS_TRAINING_MULTICAST_EN, 0x1);
 
 	r_foreach_vch(dev, ch) {
@@ -4136,25 +4116,27 @@ static u32 dbsc5_read_training(struct udevice *dev)
 }
 
 /**
- * dbsc5_ddr_register_set() - DDR mode register setting
+ * dbsc5_ddr_register_mr28_set() - DDR mode register MR28 set
  * @dev: DBSC5 device
  *
  * Set the mode register 28 of the SDRAM.
  * ZQ Mode: Command-Based ZQ Calibration
  * ZQ interval: Background Cal Interval < 64ms
  */
-static void dbsc5_ddr_register_set(struct udevice *dev)
+static void dbsc5_ddr_register_mr28_set(struct udevice *dev)
 {
-	dbsc5_send_dbcmd2(dev, 0xE841C24);
+	dbsc5_send_dbcmd2(dev, DBSC_DBCMD_CMD_OPCODE_MRW,
+			  DBSC_DBCMD_CMD_CHANNEL_ALL,
+			  DBSC_DBCMD_CMD_RANK_ALL, (28 << 8) | 0x24);
 }
 
 /**
- * dbsc5_ddr_register_read() - DDR mode register read
+ * dbsc5_ddr_register_mr27_mr57_read() - DDR mode register MR27/MR57 read
  * @dev: DBSC5 device
  *
  * Set the mode register 27 and 57 of the SDRAM.
  */
-static void dbsc5_ddr_register_read(struct udevice *dev)
+static void dbsc5_ddr_register_mr27_mr57_read(struct udevice *dev)
 {
 	struct renesas_dbsc5_dram_priv *priv = dev_get_priv(dev);
 
@@ -4162,17 +4144,21 @@ static void dbsc5_ddr_register_read(struct udevice *dev)
 		return;
 
 	/* MR27 rank0 */
-	dbsc5_send_dbcmd2(dev, 0xF801B00);
+	dbsc5_send_dbcmd2(dev, DBSC_DBCMD_CMD_OPCODE_MRR,
+			  DBSC_DBCMD_CMD_CHANNEL_ALL, 0, 27 << 8);
 	/* MR57 rank0 */
-	dbsc5_send_dbcmd2(dev, 0xF803900);
+	dbsc5_send_dbcmd2(dev, DBSC_DBCMD_CMD_OPCODE_MRR,
+			  DBSC_DBCMD_CMD_CHANNEL_ALL, 0, 57 << 8);
 
 	if (!priv->ch_have_this_cs[1])
 		return;
 
 	/* MR27 rank1 */
-	dbsc5_send_dbcmd2(dev, 0xF811B00);
+	dbsc5_send_dbcmd2(dev, DBSC_DBCMD_CMD_OPCODE_MRR,
+			  DBSC_DBCMD_CMD_CHANNEL_ALL, 1, 27 << 8);
 	/* MR57 rank1 */
-	dbsc5_send_dbcmd2(dev, 0xF813900);
+	dbsc5_send_dbcmd2(dev, DBSC_DBCMD_CMD_OPCODE_MRR,
+			  DBSC_DBCMD_CMD_CHANNEL_ALL, 1, 57 << 8);
 }
 
 /**
@@ -4251,8 +4237,8 @@ static u32 dbsc5_init_ddr(struct udevice *dev)
 	dbsc5_dbsc_regset(dev);
 
 	/* Frequency selection change (F1->F2) */
-	 dbsc5_ddr_setval_all_ch(dev, PHY_FREQ_SEL_INDEX, 0x1);
-	 dbsc5_ddr_setval_all_ch(dev, PHY_FREQ_SEL_MULTICAST_EN, 0x0);
+	dbsc5_ddr_setval_all_ch(dev, PHY_FREQ_SEL_INDEX, 0x1);
+	dbsc5_ddr_setval_all_ch(dev, PHY_FREQ_SEL_MULTICAST_EN, 0x0);
 
 	/* dfi_init_start (start ddrphy) & execute pi_training */
 	phytrainingok = dbsc5_pi_training(dev);
@@ -4329,10 +4315,10 @@ static u32 dbsc5_init_ddr(struct udevice *dev)
 
 	/* setup DDR mode registers */
 	/* MRS */
-	dbsc5_ddr_register_set(dev);
+	dbsc5_ddr_register_mr28_set(dev);
 
 	/* MRR */
-	dbsc5_ddr_register_read(dev);
+	dbsc5_ddr_register_mr27_mr57_read(dev);
 
 	/* training complete, setup DBSC */
 	dbsc5_dbsc_regset_post(dev);
@@ -4347,10 +4333,13 @@ static u32 dbsc5_init_ddr(struct udevice *dev)
 
 /**
  * dbsc5_get_board_data() - Obtain board specific DRAM configuration
+ * @dev: DBSC5 device
+ * @modemr0: MODEMR0 register content
  *
  * Return board specific DRAM configuration structure pointer.
  */
-__weak const struct renesas_dbsc5_board_config *dbsc5_get_board_data(void)
+__weak const struct renesas_dbsc5_board_config *
+dbsc5_get_board_data(struct udevice *dev, const u32 modemr0)
 {
 	return &renesas_v4h_dbsc5_board_config;
 }
@@ -4369,20 +4358,24 @@ static int renesas_dbsc5_dram_probe(struct udevice *dev)
 {
 #define RST_MODEMR0			0x0
 #define RST_MODEMR1			0x4
+#define OTP_MONITOR17			0x1144
 	struct renesas_dbsc5_data *data = (struct renesas_dbsc5_data *)dev_get_driver_data(dev);
 	ofnode cnode = ofnode_by_compatible(ofnode_null(), data->clock_node);
 	ofnode rnode = ofnode_by_compatible(ofnode_null(), data->reset_node);
+	ofnode onode = ofnode_by_compatible(ofnode_null(), data->otp_node);
 	struct renesas_dbsc5_dram_priv *priv = dev_get_priv(dev);
 	void __iomem *regs_dbsc_a = priv->regs + DBSC5_DBSC_A_OFFSET;
 	void __iomem *regs_dbsc_d = priv->regs + DBSC5_DBSC_D_OFFSET;
 	phys_addr_t rregs = ofnode_get_addr(rnode);
 	const u32 modemr0 = readl(rregs + RST_MODEMR0);
 	const u32 modemr1 = readl(rregs + RST_MODEMR1);
-	u32 breg, reg, md, sscg;
+	phys_addr_t oregs = ofnode_get_addr(onode);
+	const u32 otpmon17 = readl(oregs + OTP_MONITOR17);
+	u32 breg, reg, md, sscg, product;
 	u32 ch, cs;
 
 	/* Get board data */
-	priv->dbsc5_board_config = dbsc5_get_board_data();
+	priv->dbsc5_board_config = dbsc5_get_board_data(dev, modemr0);
 	priv->ddr_phyvalid = (u32)(priv->dbsc5_board_config->bdcfg_phyvalid);
 	priv->max_density = 0;
 	priv->cpg_regs = (void __iomem *)ofnode_get_addr(cnode);
@@ -4433,29 +4426,41 @@ static int renesas_dbsc5_dram_probe(struct udevice *dev)
 
 	/* Decode DDR operating frequency from MD[37:36,19,17] pins */
 	md = ((modemr0 & BIT(19)) >> 18) | ((modemr0 & BIT(17)) >> 17);
+	product = otpmon17 & 0xff;
 	sscg = (modemr1 >> 4) & 0x03;
 	if (sscg == 2) {
 		printf("MD[37:36] setting 0x%x not supported!", sscg);
 		hang();
 	}
 
-	if (md == 0) {
-		if (sscg == 0) {
-			priv->ddr_mbps = 6400;
-			priv->ddr_mbpsdiv = 1;
-		} else {
-			priv->ddr_mbps = 19000;
-			priv->ddr_mbpsdiv = 3;
-		}
-	} else if (md == 1) {
-		priv->ddr_mbps = 6000;
-		priv->ddr_mbpsdiv = 1;
-	} else if (md == 1) {
-		priv->ddr_mbps = 5500;
-		priv->ddr_mbpsdiv = 1;
-	} else if (md == 1) {
+	if (product == 0x2) {			/* V4H-3 */
 		priv->ddr_mbps = 4800;
 		priv->ddr_mbpsdiv = 1;
+	} else if (product == 0x1) {		/* V4H-5 */
+		if (md == 3)
+			priv->ddr_mbps = 4800;
+		else
+			priv->ddr_mbps = 5000;
+		priv->ddr_mbpsdiv = 1;
+	} else {				/* V4H-7 */
+		if (md == 0) {
+			if (sscg == 0) {
+				priv->ddr_mbps = 6400;
+				priv->ddr_mbpsdiv = 1;
+			} else {
+				priv->ddr_mbps = 19000;
+				priv->ddr_mbpsdiv = 3;
+			}
+		} else if (md == 1) {
+			priv->ddr_mbps = 6000;
+			priv->ddr_mbpsdiv = 1;
+		} else if (md == 2) {
+			priv->ddr_mbps = 5500;
+			priv->ddr_mbpsdiv = 1;
+		} else if (md == 3) {
+			priv->ddr_mbps = 4800;
+			priv->ddr_mbpsdiv = 1;
+		}
 	}
 
 	priv->ddr_mul = CLK_DIV(priv->ddr_mbps, priv->ddr_mbpsdiv * 2,

@@ -536,6 +536,8 @@ config DEBUG_UART_BASE
 	default 0x0 if DEBUG_UART_SANDBOX
 	default 0xff000000 if DEBUG_UART_ZYNQ && ARCH_ZYNQMP
 	default 0xe0000000 if DEBUG_UART_ZYNQ && ARCH_ZYNQ
+	default 0xff000000 if DEBUG_UART_PL011 && ARCH_VERSAL
+	default 0xf1920000 if DEBUG_UART_PL011 && (ARCH_VERSAL_NET || ARCH_VERSAL2)
 	help
 	  This is the base address of your UART for memory-mapped UARTs.
 
@@ -571,6 +573,7 @@ config DEBUG_UART_CLOCK
 	default 0 if DEBUG_MVEBU_A3700_UART
 	default 100000000 if DEBUG_UART_ZYNQ && ARCH_ZYNQMP
 	default 50000000 if DEBUG_UART_ZYNQ && ARCH_ZYNQ
+	default 100000000 if DEBUG_UART_PL011 && (ARCH_VERSAL || ARCH_VERSAL_NET || ARCH_VERSAL2)
 	help
 	  The UART input clock determines the speed of the internal UART
 	  circuitry. The baud rate is derived from this by dividing the input
@@ -776,7 +779,7 @@ config MCFUART
 
 config MXC_UART
 	bool "IMX serial port support"
-	depends on ARCH_MX31 || MX5 || MX6 || MX7 || IMX8M
+	depends on MX5 || MX6 || MX7 || IMX8M
 	help
 	  If you have a machine based on a Motorola IMX CPU you
 	  can enable its onboard serial port by enabling this option.
@@ -804,6 +807,12 @@ config SPL_SYS_NS16550_SERIAL
 	bool "NS16550 UART or compatible legacy driver in SPL"
 	depends on SPL && !SPL_DM_SERIAL
 	default y if SYS_NS16550_SERIAL || ARCH_SUNXI || ARCH_OMAP2PLUS
+	select SYS_NS16550
+
+config TPL_SYS_NS16550_SERIAL
+	bool "NS16550 UART or compatible legacy driver in TPL"
+	depends on TPL && !TPL_DM_SERIAL
+	default y if SPL_SYS_NS16550_SERIAL
 	select SYS_NS16550
 
 config SYS_NS16550

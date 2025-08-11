@@ -3,6 +3,7 @@
 
 #include <command.h>
 #include <console.h>
+#include <env.h>
 #include <log.h>
 #include <dm/device.h>
 #include <linux/delay.h>
@@ -57,7 +58,6 @@ static int dhcp_loop(struct udevice *udev)
 	/* Wait for DHCP to complete */
 	do {
 		net_lwip_rx(udev, netif);
-		sys_check_timeouts();
 		bound = dhcp_supplied_address(netif);
 		if (bound)
 			break;
@@ -115,7 +115,8 @@ int do_dhcp(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 	int ret;
 	struct udevice *dev;
 
-	eth_set_current();
+	if (net_lwip_eth_start() < 0)
+		return CMD_RET_FAILURE;
 
 	dev = eth_get_dev();
 	if (!dev) {

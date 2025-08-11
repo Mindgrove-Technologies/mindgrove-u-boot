@@ -15,9 +15,9 @@ U-Boot API documentation
    fs
    getopt
    interrupt
+   i3c
    led
    linker_lists
-   lmb
    logging
    nvmem
    part
@@ -25,6 +25,8 @@ U-Boot API documentation
    rng
    sandbox
    serial
+   setjmp
    sysreset
    timer
    unicode
+   uthread

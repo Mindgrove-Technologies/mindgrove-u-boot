@@ -195,9 +195,7 @@ static int sm8250_enable(struct clk *clk)
 		break;
 	}
 
-	qcom_gate_clk_en(priv, clk->id);
-
-	return 0;
+	return qcom_gate_clk_en(priv, clk->id);
 }
 
 static const struct qcom_reset_map sm8250_gcc_resets[] = {
@@ -362,7 +360,7 @@ static const char *const sm8250_rcg_names[] = {
 	"GCC_PCIE_2_AUX_CMD_RCGR",
 };
 
-static struct msm_clk_data qcs404_gcc_data = {
+static struct msm_clk_data sm8250_gcc_data = {
 	.resets = sm8250_gcc_resets,
 	.num_resets = ARRAY_SIZE(sm8250_gcc_resets),
 	.clks = sm8250_clks,
@@ -383,7 +381,7 @@ static struct msm_clk_data qcs404_gcc_data = {
 static const struct udevice_id gcc_sm8250_of_match[] = {
 	{
 		.compatible = "qcom,gcc-sm8250",
-		.data = (ulong)&qcs404_gcc_data,
+		.data = (ulong)&sm8250_gcc_data,
 	},
 	{}
 };

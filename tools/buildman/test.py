@@ -610,7 +610,7 @@ class TestBuild(unittest.TestCase):
     def testToolchainDownload(self):
         """Test that we can download toolchains"""
         if use_network:
-            with test_util.capture_sys_output() as (stdout, stderr):
+            with terminal.capture() as (stdout, stderr):
                 url = self.toolchains.LocateArchUrl('arm')
             self.assertRegex(url, 'https://www.kernel.org/pub/tools/'
                     'crosstool/files/bin/x86_64/.*/'
@@ -836,6 +836,7 @@ class TestBuild(unittest.TestCase):
         tmpdir = self.base_dir
 
         with (patch('time.time', side_effect=self.get_time),
+              patch('time.perf_counter', side_effect=self.get_time),
               patch('time.monotonic', side_effect=self.get_time),
               patch('time.sleep', side_effect=self.inc_time),
               patch('os.kill', side_effect=self.kill)):
@@ -986,7 +987,7 @@ class TestBuild(unittest.TestCase):
         diff = self.call_make_environment(tchn, full_path=True)[0]
         self.assertEqual({b'LC_ALL': b'C'}, diff)
 
-        # Test that virtualenv is handled correctly
+        # Test that Python sandbox is handled correctly
         tchn.override_toolchain = False
         sys.prefix = '/some/venv'
         env = dict(os.environb)
@@ -1053,7 +1054,7 @@ class TestBuild(unittest.TestCase):
         self.assertEqual([f'{home}/mypath'], toolchains.paths)
 
         # Check scanning
-        with test_util.capture_sys_output() as (stdout, _):
+        with terminal.capture() as (stdout, _):
             toolchains.Scan(verbose=True, raise_on_error=False)
         lines = iter(stdout.getvalue().splitlines() + ['##done'])
         self.assertEqual('Scanning for tool chains', next(lines))
@@ -1070,7 +1071,7 @@ class TestBuild(unittest.TestCase):
         self.assertEqual('##done', next(lines))
 
         # Check adding a toolchain
-        with test_util.capture_sys_output() as (stdout, _):
+        with terminal.capture() as (stdout, _):
             toolchains.Add('~/aarch64-linux-gcc', test=True, verbose=True)
         lines = iter(stdout.getvalue().splitlines() + ['##done'])
         self.assertEqual('Tool chain test:  BAD', next(lines))

@@ -22,6 +22,9 @@ config ARM64_CRC32
 	  not be present on all ARMv8.0, but is always present on ARMv8.1 and
 	  newer.
 
+config BOOTFILE
+	default kernel.itb if SPL_ATF && TARGET_SOCFPGA_SOC64
+
 config COUNTER_FREQUENCY
 	int "Timer clock frequency"
 	depends on ARM64 || CPU_V7A
@@ -30,7 +33,7 @@ config COUNTER_FREQUENCY
 			ROCKCHIP_RK3288 || ROCKCHIP_RK322X || ROCKCHIP_RK3036
 	default 25000000 if ARCH_LX2160A || ARCH_LX2162A || ARCH_LS1088A
 	default 100000000 if ARCH_ZYNQMP
-	default 200000000 if ARCH_SOCFPGA && ARM64 && TARGET_SOCFPGA_AGILEX5
+	default 200000000 if TARGET_SOCFPGA_AGILEX5 || TARGET_SOCFPGA_AGILEX7M
 	default 0
 	help
 	  For platforms with ARMv8-A and ARMv7-A which features a system
@@ -108,6 +111,21 @@ config LNX_KRNL_IMG_TEXT_OFFSET_BASE
 	  The value subtracted from CONFIG_TEXT_BASE to calculate the
 	  TEXT_OFFSET value written to the Linux kernel image header.
 
+config KVM_VIRT_INS
+	bool "Emit virtualizable instructions"
+	help
+	  Instructions in the ARM ISA that have multiple output registers,
+	  can't be used if the instruction leads to an exception to the hypervisor.
+	  These instructions cannot be emulated by KVM because they do not produce
+	  syndrome information data that KVM can use to infer the destination
+	  register, the faulting address, whether it was a load or store,
+	  if it's a 32 or 64 bit general-purpose register amongst other things.
+	  Use this to produce virtualizable instructions if you plan to run U-Boot
+	  with KVM.
+
+config NVIC
+	bool
+
 config GICV2
 	bool
 
@@ -117,6 +135,7 @@ config GICV3
 config DRIVER_GICV2
 	bool "ARM GICV2 driver"
 	select IRQ
+	depends on !NVIC
 	help
 	  ARM GICV2 driver.
 	  Basic support for parsing the GICV2 node and generate ACPI tables.
@@ -124,6 +143,7 @@ config DRIVER_GICV2
 config GIC_V3_ITS
 	bool "ARM GICV3 ITS"
 	select IRQ
+	depends on !NVIC
 	help
 	  ARM GICV3 Interrupt translation service (ITS).
 	  Basic support for programming locality specific peripheral
@@ -134,6 +154,7 @@ config GIC_V3_ITS
 
 config GICV3_SUPPORT_GIC600
 	bool "ARM GICV3 GIC600 SUPPORT"
+	depends on !NVIC
 	help
 	  ARM GIC-600 IP complies with ARM GICv3 architecture, but among others,
 	  implements a power control register in the Redistributor frame.This
@@ -193,6 +214,7 @@ config SPL_SYS_DCACHE_OFF
 
 config SYS_ARM_CACHE_CP15
 	bool "CP15 based cache enabling support"
+	depends on !CPU_V7M
 	help
 	  Select this if your processor suports enabling caches by using
 	  CP15 registers.
@@ -200,6 +222,7 @@ config SYS_ARM_CACHE_CP15
 config SYS_ARM_MMU
 	bool "MMU-based Paged Memory Management Support"
 	select SYS_ARM_CACHE_CP15
+	depends on !CPU_V7M
 	help
 	  Select if you want MMU-based virtualised addressing space
 	  support via paged memory management.
@@ -350,6 +373,7 @@ config CPU_V7M
 	select SYS_CACHE_SHIFT_5
 	select SYS_THUMB_BUILD
 	select THUMB2_KERNEL
+	select NVIC
 
 config CPU_V7R
 	bool
@@ -591,6 +615,13 @@ choice
 	prompt "Target select"
 	default TARGET_HIKEY
 
+config ARCH_AIROHA
+	bool "Airoha SoCs"
+	select DM
+	select OF_CONTROL
+	help
+	  Support for the Airoha soc.
+
 config ARCH_AT91
 	bool "Atmel AT91"
 	select GPIO_EXTRA_HEADER
@@ -639,7 +670,6 @@ config ARCH_MVEBU
 	select SPL_TIMER if SPL
 	select TIMER if !ARM64
 	select OF_CONTROL
-	select OF_SEPARATE
 	select SPI
 	imply CMD_DM
 
@@ -795,6 +825,7 @@ config ARCH_KEYSTONE
 	imply CMD_SAVES
 	imply DM_I2C
 	imply FIT
+	imply OF_BOARD_SETUP_EXTENDED
 	imply SOC_TI
 	imply TI_KEYSTONE_SERDES
 
@@ -805,7 +836,11 @@ config ARCH_K3
 	select FIT
 	select REGEX
 	select FIT_SIGNATURE if ARM64
+	select LTO
 	imply TI_SECURE_DEVICE
+	imply DM_RNG if ARM64
+	imply TEE if ARM64
+	imply OPTEE if ARM64
 
 config ARCH_OMAP2PLUS
 	bool "TI OMAP2+"
@@ -842,6 +877,15 @@ config ARCH_MEDIATEK
 	  Support for the MediaTek SoCs family developed by MediaTek Inc.
 	  Please refer to doc/README.mediatek for more information.
 
+config ARCH_MMP
+	bool "Marvell MMP"
+	select ARM64
+	select DM
+	select DM_SERIAL
+	select OF_CONTROL
+	select SAVE_PREV_BL_FDT_ADDR
+	select SAVE_PREV_BL_INITRAMFS_START_ADDR
+
 config ARCH_LPC32XX
 	bool "NXP LPC32xx platform"
 	select CPU_ARM926EJS
@@ -868,6 +912,7 @@ config ARCH_IMX8
 
 config ARCH_IMX8M
 	bool "NXP i.MX8M platform"
+	select ARCH_MISC_INIT if FSL_CAAM
 	select ARM64
 	select GPIO_EXTRA_HEADER
 	select MACH_IMX
@@ -917,6 +962,7 @@ config ARCH_IMXRT
 
 config ARCH_MX23
 	bool "NXP i.MX23 family"
+	select ARCH_MISC_INIT
 	select CPU_ARM926EJS
 	select GPIO_EXTRA_HEADER
 	select MACH_IMX
@@ -924,16 +970,11 @@ config ARCH_MX23
 
 config ARCH_MX28
 	bool "NXP i.MX28 family"
+	select ARCH_MISC_INIT
 	select CPU_ARM926EJS
 	select GPIO_EXTRA_HEADER
 	select MACH_IMX
 	select SUPPORT_SPL
-
-config ARCH_MX31
-	bool "NXP i.MX31 family"
-	select CPU_ARM1136
-	select GPIO_EXTRA_HEADER
-	select MACH_IMX
 
 config ARCH_MX7ULP
 	bool "NXP MX7ULP"
@@ -1043,7 +1084,7 @@ config ARCH_OWL
 	select CLK
 	select CLK_OWL
 	select OF_CONTROL
-	select SYS_RELOC_GD_ENV_ADDR
+	select ENV_RELOC_GD_ENV_ADDR
 	imply CMD_DM
 
 config ARCH_QEMU
@@ -1067,9 +1108,11 @@ config ARCH_QEMU
 	imply USB_XHCI_PCI
 	imply USB_KEYBOARD
 	imply CMD_USB
+	imply POSITION_INDEPENDENT
 
 config ARCH_RENESAS
 	bool "Renesas ARM SoCs"
+	select ARCH_MISC_INIT if DISPLAY_CPUINFO && !(RZA1 || RZN1)
 	select DM
 	select DM_SERIAL
 	select GPIO_EXTRA_HEADER
@@ -1079,7 +1122,6 @@ config ARCH_RENESAS
 	imply FAT_WRITE
 	imply OF_UPSTREAM
 	imply SYS_THUMB_BUILD
-	imply ARCH_MISC_INIT if DISPLAY_CPUINFO
 
 config ARCH_SNAPDRAGON
 	bool "Qualcomm Snapdragon SoCs"
@@ -1092,15 +1134,18 @@ config ARCH_SNAPDRAGON
 	select GPIO_EXTRA_HEADER
 	select MSM_SMEM
 	select OF_CONTROL
-	select OF_SEPARATE
 	select SMEM
 	select SPMI
 	select BOARD_LATE_INIT
 	select OF_BOARD
-	select SAVE_PREV_BL_FDT_ADDR
+	select SAVE_PREV_BL_FDT_ADDR if !ENABLE_ARM_SOC_BOOT0_HOOK
 	select LINUX_KERNEL_IMAGE_HEADER if !ENABLE_ARM_SOC_BOOT0_HOOK
+	select SYSRESET
+	select SYSRESET_PSCI
+	select ANDROID_BOOT_IMAGE_IGNORE_BLOB_ADDR
 	imply OF_UPSTREAM
 	imply CMD_DM
+	imply DM_USB_GADGET
 
 config ARCH_SOCFPGA
 	bool "Altera SOCFPGA family"
@@ -1110,9 +1155,9 @@ config ARCH_SOCFPGA
 	select CPU_V7A if TARGET_SOCFPGA_GEN5 || TARGET_SOCFPGA_ARRIA10
 	select DM
 	select DM_SERIAL
-	select GICV2
 	select GPIO_EXTRA_HEADER
 	select ENABLE_ARM_SOC_BOOT0_HOOK if TARGET_SOCFPGA_GEN5 || TARGET_SOCFPGA_ARRIA10
+	select LMB_ARCH_MEM_MAP if TARGET_SOCFPGA_SOC64
 	select OF_CONTROL
 	select SPL_DM_RESET if DM_RESET
 	select SPL_DM_SERIAL
@@ -1131,7 +1176,8 @@ config ARCH_SOCFPGA
 	select SYSRESET
 	select SYSRESET_SOCFPGA if TARGET_SOCFPGA_GEN5 || TARGET_SOCFPGA_ARRIA10
 	select SYSRESET_SOCFPGA_SOC64 if !TARGET_SOCFPGA_AGILEX5 && \
-	  TARGET_SOCFPGA_SOC64
+           TARGET_SOCFPGA_SOC64
+	select SYSRESET_PSCI if TARGET_SOCFPGA_AGILEX5
 	imply CMD_DM
 	imply CMD_MTDPARTS
 	imply CRC32_VERIFY
@@ -1145,8 +1191,6 @@ config ARCH_SOCFPGA
 	imply SPL_DM_SPI_FLASH
 	imply SPL_LIBDISK_SUPPORT
 	imply SPL_MMC
-	imply SYS_MMCSD_RAW_MODE_U_BOOT_USE_PARTITION
-	imply SYS_MMCSD_RAW_MODE_U_BOOT_USE_PARTITION_TYPE
 	imply SPL_SPI_FLASH_SUPPORT
 	imply SPL_SPI
 	imply L2X0_CACHE
@@ -1165,9 +1209,9 @@ config ARCH_SUNXI
 	select DM_SPI_FLASH if SPI && MTD
 	select DM_KEYBOARD
 	select DM_SERIAL
+	select MMU_PGPROT if ARM64
 	select OF_BOARD_SETUP
 	select OF_CONTROL
-	select OF_SEPARATE
 	select PINCTRL
 	select SPECIFY_CONSOLE_INDEX
 	select SPL_SEPARATE_BSS if SPL
@@ -1181,7 +1225,7 @@ config ARCH_SUNXI
 	select USB_STORAGE if DISTRO_DEFAULTS && USB_HOST
 	select SPL_USE_TINY_PRINTF if SPL
 	select USE_PREBOOT
-	select SYS_RELOC_GD_ENV_ADDR
+	select ENV_RELOC_GD_ENV_ADDR
 	imply BOARD_LATE_INIT
 	imply CMD_DM
 	imply CMD_GPT
@@ -1391,7 +1435,7 @@ config TARGET_TOTAL_COMPUTE
 	select DM_SERIAL
 	select DM_GPIO
 	select MMC
-	imply OF_HAS_PRIOR_STAGE
+	imply OF_HAS_PRIOR_STAGE if !BLOBLIST
 	imply MISC_INIT_R
 
 config TARGET_LS2080A_EMU
@@ -1506,7 +1550,6 @@ config TARGET_LX2160AQDS
 config TARGET_LX2162AQDS
 	bool "Support lx2162aqds"
 	select ARCH_LX2162A
-	select ARCH_MISC_INIT
 	select ARM64
 	select ARMV8_MULTIENTRY
 	select ARCH_SUPPORT_TFABOOT
@@ -1919,7 +1962,6 @@ config TARGET_SL28
 config TARGET_TEN64
 	bool "Support ten64"
 	select ARCH_LS1088A
-	select ARCH_MISC_INIT
 	select ARM64
 	select ARMV8_MULTIENTRY
 	select ARCH_SUPPORT_TFABOOT
@@ -2184,6 +2226,7 @@ config SERIAL_TAG
 config STATIC_MACH_TYPE
 	bool "Statically define the Machine ID number"
 	default y if TARGET_DS109 || TARGET_DS414 || DEFAULT_DEVICE_TREE = "sun7i-a20-icnova-swac"
+	depends on SUPPORT_PASSING_ATAGS
 	help
 	  When booting via ATAGs, enable this option if we know the correct
 	  machine ID number to use at compile time.  Some systems will be
@@ -2232,6 +2275,8 @@ config SYS_KWD_CONFIG
 	  Path within the source directory to the kwbimage.cfg file to use
 	  when packaging the U-Boot image for use.
 
+source "arch/arm/mach-airoha/Kconfig"
+
 source "arch/arm/mach-apple/Kconfig"
 
 source "arch/arm/mach-aspeed/Kconfig"
@@ -2274,8 +2319,6 @@ source "arch/arm/mach-octeontx2/Kconfig"
 
 source "arch/arm/cpu/armv7/ls102xa/Kconfig"
 
-source "arch/arm/mach-imx/mx3/Kconfig"
-
 source "arch/arm/mach-imx/mx5/Kconfig"
 
 source "arch/arm/mach-imx/mx6/Kconfig"
@@ -2309,6 +2352,8 @@ source "arch/arm/mach-renesas/Kconfig"
 source "arch/arm/mach-meson/Kconfig"
 
 source "arch/arm/mach-mediatek/Kconfig"
+
+source "arch/arm/mach-mmp/Kconfig"
 
 source "arch/arm/mach-qemu/Kconfig"
 

@@ -63,6 +63,7 @@ config MX6UL
 
 config MX6ULL
 	bool "i.MX 6ULL SoC support"
+	select ARCH_MISC_INIT
 	select ROM_UNIFIED_SECTIONS
 	select SYSCOUNTER_TIMER
 	select SYS_L2CACHE_OFF
@@ -550,6 +551,7 @@ config TARGET_LXR2
 	select DM_THERMAL
 	select SUPPORT_SPL
 	imply CMD_DM
+	imply OF_UPSTREAM
 
 config TARGET_PCM058
 	bool "Phytec PCM058 i.MX6 Quad"

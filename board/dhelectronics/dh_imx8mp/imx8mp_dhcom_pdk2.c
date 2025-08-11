@@ -153,11 +153,6 @@ void dh_add_item_number_and_serial_to_env(struct eeprom_id_page *eip)
 	}
 }
 
-int board_init(void)
-{
-	return 0;
-}
-
 int board_late_init(void)
 {
 	u8 eeprom_buffer[DH_EEPROM_ID_PAGE_MAX_SIZE] = { 0 };
@@ -186,5 +181,7 @@ int board_late_init(void)
 
 enum env_location env_get_location(enum env_operation op, int prio)
 {
-	return prio ? ENVL_UNKNOWN : ENVL_SPI_FLASH;
+	return prio ? ENVL_UNKNOWN : CONFIG_IS_ENABLED(ENV_IS_IN_SPI_FLASH,
+						       (ENVL_SPI_FLASH),
+						       (ENVL_NOWHERE));
 }

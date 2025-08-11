@@ -16,6 +16,7 @@ config EFI_LOADER
 	depends on !EFI_STUB || !X86 || X86_64 || EFI_STUB_32BIT
 	depends on !EFI_APP
 	default y if !ARM || SYS_CPU = armv7 || SYS_CPU = armv8
+	select EFI
 	select CHARSET
 	# We need to send DM events, dynamically, in the EFI block driver
 	select DM_EVENT
@@ -27,6 +28,7 @@ config EFI_LOADER
 	select REGEX
 	imply FAT
 	imply FAT_WRITE
+	imply FAT_RENAME
 	imply USB_KEYBOARD_FN_KEYS
 	imply VIDEO_ANSI
 	help
@@ -69,6 +71,15 @@ config EFI_SECURE_BOOT
 
 config EFI_SIGNATURE_SUPPORT
 	bool
+
+config EFI_DEBUG_SUPPORT
+	bool "EFI Debug Support"
+	default y if !HAS_BOARD_SIZE_LIMIT
+	help
+	  Select this option if you want to setup the EFI Debug Support
+	  Table and the EFI_SYSTEM_TABLE_POINTER which is used by the debug
+	  agent or an external debugger to determine loaded image information
+	  in a quiescent manner.
 
 menu "UEFI services"
 
@@ -304,7 +315,6 @@ config EFI_CAPSULE_FIRMWARE_FIT
 	depends on EFI_CAPSULE_FIRMWARE_MANAGEMENT
 	select UPDATE_FIT
 	select DFU
-	select SET_DFU_ALT_INFO
 	select EFI_CAPSULE_FIRMWARE
 	help
 	  Select this option if you want to enable firmware management protocol
@@ -316,7 +326,6 @@ config EFI_CAPSULE_FIRMWARE_RAW
 	depends on SANDBOX || (!SANDBOX && !EFI_CAPSULE_FIRMWARE_FIT)
 	select DFU_WRITE_ALT
 	select DFU
-	select SET_DFU_ALT_INFO
 	select EFI_CAPSULE_FIRMWARE
 	help
 	  Select this option if you want to enable firmware management protocol
@@ -438,25 +447,15 @@ config EFI_TCG2_PROTOCOL
 	  Provide a EFI_TCG2_PROTOCOL implementation using the TPM hardware
 	  of the platform.
 
-config EFI_TCG2_PROTOCOL_EVENTLOG_SIZE
-	int "EFI_TCG2_PROTOCOL EventLog size"
-	depends on EFI_TCG2_PROTOCOL
-	default 65536
-	help
-		Define the size of the EventLog for EFI_TCG2_PROTOCOL. Note that
-		this is going to be allocated twice. One for the eventlog it self
-		and one for the configuration table that is required from the spec
-
 config EFI_TCG2_PROTOCOL_MEASURE_DTB
 	bool "Measure DTB with EFI_TCG2_PROTOCOL"
 	depends on EFI_TCG2_PROTOCOL
 	help
 	  When enabled, the DTB image passed to the booted EFI image is
 	  measured using the EFI TCG2 protocol. Do not enable this feature if
-	  the passed DTB contains data that change across platform reboots
-	  and cannot be used has a predictable measurement. Otherwise
-	  this feature allows better measurement of the system boot
-	  sequence.
+	  the passed DTB contains data that changes across platform reboots
+	  and cannot be used for a predictable measurement. Otherwise, this
+	  feature allows for better measurement of the system boot sequence.
 
 config EFI_LOAD_FILE2_INITRD
 	bool "EFI_FILE_LOAD2_PROTOCOL for Linux initial ramdisk"
@@ -596,6 +595,8 @@ config BOOTEFI_TESTAPP_COMPILE
 	  when this option is enabled.
 
 endif
+
+source "lib/efi_client/Kconfig"
 
 source "lib/efi/Kconfig"
 

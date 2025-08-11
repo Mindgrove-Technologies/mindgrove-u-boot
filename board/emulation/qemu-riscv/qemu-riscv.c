@@ -28,11 +28,6 @@ int is_flash_available(void)
 }
 #endif
 
-int board_init(void)
-{
-	return 0;
-}
-
 int board_late_init(void)
 {
 	/* start usb so that usb keyboard can be used as input device */
@@ -63,11 +58,3 @@ int board_fit_config_name_match(const char *name)
 	return 0;
 }
 #endif
-
-int board_fdt_blob_setup(void **fdtp)
-{
-	/* Stored the DTB address there during our init */
-	*fdtp = (void *)(ulong)gd->arch.firmware_fdt_addr;
-
-	return 0;
-}

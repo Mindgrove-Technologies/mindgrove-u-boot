@@ -284,13 +284,22 @@ config MMC_DW_K3
 
 config MMC_DW_ROCKCHIP
 	bool "Rockchip SD/MMC controller support"
-	depends on OF_CONTROL
+	depends on OF_CONTROL && ARCH_ROCKCHIP
 	depends on MMC_DW
 	help
 	  This enables support for the Rockchip SD/MMM controller, which is
 	  based on Designware IP. The device is compatible with at least
 	  SD 3.0, SDIO 3.0 and MMC 4.5 and supports common eMMC chips as well
 	  as removeable SD and micro-SD cards.
+
+config MMC_SDHCI_ADI
+	bool "ADI SD/MMC controller support"
+	depends on ARCH_SC5XX
+	depends on DM_MMC && OF_CONTROL
+	depends on MMC_SDHCI && MMC_SDHCI_ADMA
+	help
+	  This enables support for the SD/MMC controller included in some Analog
+	  Devices SC5XX Socs.
 
 config MMC_DW_SOCFPGA
 	bool "SOCFPGA specific extensions for Synopsys DW Memory Card Interface"
@@ -323,15 +332,6 @@ config MMC_MESON_GX
 	depends on ARCH_MESON
 	help
 	 Support for EMMC host controller on Meson GX ARM SoCs platform (S905)
-
-config MMC_MXC
-	bool "Freescale i.MX21/27/31 or MPC512x Multimedia Card support"
-	help
-	  This selects the Freescale i.MX21, i.MX27, i.MX31 or MPC512x
-	  Multimedia Card Interface. If you have an i.MX or MPC512x platform
-	  with a Multimedia Card slot, say Y here.
-
-	  If unsure, say N.
 
 config MMC_OWL
 	bool "Actions OWL Multimedia Card Interface support"
@@ -382,6 +382,7 @@ config MVEBU_MMC
 
 config MMC_OMAP_HS
 	bool "TI OMAP High Speed Multimedia Card Interface support"
+	depends on ARCH_KEYSTONE || ARCH_OMAP2PLUS
 	select DM_REGULATOR_PBIAS if DM_REGULATOR
 	help
 	  This selects the TI OMAP High Speed Multimedia card Interface.
@@ -519,6 +520,7 @@ config SPL_MMC_SDHCI_ADMA
 
 config MMC_SDHCI_ADMA_FORCE_32BIT
 	bool "Force 32 bit mode for ADMA on 64 bit platforms"
+	depends on MMC_SDHCI_ADMA_HELPERS
 	help
 	  This forces SDHCI ADMA to be built for 32 bit descriptors, even
 	  on a 64 bit platform where they would otherwise be assumed to
@@ -528,6 +530,7 @@ config MMC_SDHCI_ADMA_FORCE_32BIT
 
 config MMC_SDHCI_ADMA_64BIT
 	bool "Use SHDCI ADMA with 64 bit descriptors"
+	depends on MMC_SDHCI_ADMA_HELPERS
 	depends on !MMC_SDHCI_ADMA_FORCE_32BIT
 	default y if DMA_ADDR_T_64BIT
 	help
@@ -586,7 +589,7 @@ config MMC_SDHCI_BCM2835
 
 config MMC_SDHCI_BCMSTB
 	tristate "SDHCI support for the BCMSTB SD/MMC Controller"
-	depends on MMC_SDHCI
+	depends on MMC_SDHCI && (ARCH_BCMSTB || ARCH_BCM283X)
 	help
 	  This selects the Broadcom set-top box SD/MMC controller.
 
@@ -649,19 +652,9 @@ config MMC_SDHCI_F_SDH30
 	  If you have a controller with this interface, say Y here.
 	  If unsure, say N.
 
-config MMC_SDHCI_KONA
-	bool "SDHCI support on Broadcom KONA platform"
-	depends on MMC_SDHCI
-	help
-	  This selects the Broadcom Kona Secure Digital Host Controller
-	  Interface(SDHCI) support.
-	  This is used in Broadcom mobile SoCs.
-
-	  If you have a controller with this interface, say Y here.
-
 config MMC_SDHCI_MSM
 	bool "Qualcomm SDHCI controller"
-	depends on MMC_SDHCI
+	depends on MMC_SDHCI && ARCH_SNAPDRAGON
 	help
 	  Enables support for SDHCI 2.0 controller present on some Qualcomm
           Snapdragon devices. This device is compatible with eMMC v4.5 and
@@ -707,7 +700,7 @@ config MMC_SDHCI_ROCKCHIP
 
 config MMC_SDHCI_S5P
 	bool "SDHCI support on Samsung S5P SoC"
-	depends on MMC_SDHCI
+	depends on MMC_SDHCI && S5P
 	help
 	  This selects the Secure Digital Host Controller Interface (SDHCI)
 	  on Samsung S5P SoCs.
@@ -729,7 +722,7 @@ config MMC_SDHCI_SNPS
 
 config MMC_SDHCI_STI
 	bool "SDHCI support for STMicroelectronics SoC"
-	depends on MMC_SDHCI && OF_CONTROL
+	depends on MMC_SDHCI && OF_CONTROL && ARCH_STI
 	help
 	  This selects the Secure Digital Host Controller Interface (SDHCI)
 	  on STMicroelectronics STiH410 SoC.
@@ -783,6 +776,7 @@ config TEGRA124_MMC_DISABLE_EXT_LOOPBACK
 config MMC_SDHCI_ZYNQ
 	bool "Arasan SDHCI controller support"
 	depends on OF_CONTROL
+	depends on ARCH_VERSAL || ARCH_VERSAL_NET || ARCH_VERSAL2 || ARCH_ZYNQ || ARCH_ZYNQMP
 	depends on MMC_SDHCI
 	help
 	  Support for Arasan SDHCI host controller on Zynq/ZynqMP ARM SoCs platform
@@ -841,7 +835,7 @@ config GENERIC_ATMEL_MCI
 
 config STM32_SDMMC2
 	bool "STMicroelectronics STM32H7 SD/MMC Host Controller support"
-	depends on OF_CONTROL
+	depends on OF_CONTROL && (ARCH_STM32 || ARCH_STM32MP)
 	help
 	  This selects support for the SD/MMC controller on STM32H7 SoCs.
 	  If you have a board based on such a SoC and with a SD/MMC slot,
@@ -860,7 +854,7 @@ config FTSDC010_SDIO
 
 config MMC_MTK
 	bool "MediaTek SD/MMC Card Interface support"
-	depends on ARCH_MEDIATEK || ARCH_MTMIPS
+	depends on ARCH_MEDIATEK || ARCH_MTMIPS || ARCH_AIROHA
 	depends on OF_CONTROL
 	help
 	  This selects the MediaTek(R) Secure digital and Multimedia card Interface.
@@ -875,6 +869,7 @@ config FSL_SDHC_V2_3
 
 config FSL_ESDHC
 	bool "Freescale/NXP eSDHC controller support"
+	depends on ARCH_LS1021A || FSL_LSCH2 || FSL_LSCH3 || PPC
 	select FSL_SDHC_V2_3 if ARCH_P1010 || ARCH_BSC9131 || ARCH_BSC9132 \
 		|| ARCH_C29X
 	help
@@ -919,8 +914,15 @@ config ESDHC_DETECT_QUIRK
 	bool "QIXIS-based eSDHC quirk detection"
 	depends on FSL_ESDHC && FSL_QIXIS
 
+config ESDHCI_QUIRK_BROKEN_TIMEOUT_VALUE
+	bool
+	depends on FSL_ESDHC || FSL_ESDHC_IMX
+	def_bool y if ARCH_T1024 || ARCH_T1040 || ARCH_T1042 || ARCH_T2080 \
+		|| FSL_ESDHC_IMX
+
 config FSL_ESDHC_IMX
 	bool "Freescale/NXP i.MX eSDHC controller support"
+	depends on MACH_IMX
 	help
 	  This selects support for the i.MX eSDHC (Enhanced Secure Digital Host
 	  Controller) found on numerous Freescale/NXP SoCs.

@@ -7,10 +7,10 @@
  */
 
 #include <abuf.h>
+#include <env.h>
 #include <mapmem.h>
 #include <upl.h>
 #include <dm/ofnode.h>
-#include <test/suites.h>
 #include <test/test.h>
 #include <test/ut.h>
 #include "bootstd_common.h"

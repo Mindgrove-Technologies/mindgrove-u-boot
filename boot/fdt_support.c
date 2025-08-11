@@ -18,6 +18,7 @@
 #include <dm/ofnode.h>
 #include <linux/ctype.h>
 #include <linux/types.h>
+#include <linux/sizes.h>
 #include <asm/global_data.h>
 #include <asm/unaligned.h>
 #include <linux/libfdt.h>
@@ -223,14 +224,23 @@ int fdt_initrd(void *fdt, ulong initrd_start, ulong initrd_end)
 	int is_u64;
 	uint64_t addr, size;
 
-	/* just return if the size of initrd is zero */
-	if (initrd_start == initrd_end)
-		return 0;
-
 	/* find or create "/chosen" node. */
 	nodeoffset = fdt_find_or_add_subnode(fdt, 0, "chosen");
 	if (nodeoffset < 0)
 		return nodeoffset;
+
+	/*
+	 * Although we didn't setup an initrd, there could be a stale
+	 * initrd setting from the previous boot firmware in the live
+	 * device tree. So, make sure there is no setting left if we
+	 * don't want an initrd.
+	 */
+	if (initrd_start == initrd_end) {
+		fdt_delprop(fdt, nodeoffset, "linux,initrd-start");
+		fdt_delprop(fdt, nodeoffset, "linux,initrd-end");
+
+		return 0;
+	}
 
 	total = fdt_num_mem_rsv(fdt);
 
@@ -464,7 +474,6 @@ void do_fixup_by_compat_u32(void *fdt, const char *compat,
 	do_fixup_by_compat(fdt, compat, prop, &tmp, 4, create);
 }
 
-#ifdef CONFIG_ARCH_FIXUP_FDT_MEMORY
 /*
  * fdt_pack_reg - pack address and size array into the "reg"-suitable stream
  */
@@ -493,6 +502,7 @@ static int fdt_pack_reg(const void *fdt, void *buf, u64 *address, u64 *size,
 	return p - (char *)buf;
 }
 
+#ifdef CONFIG_ARCH_FIXUP_FDT_MEMORY
 #if CONFIG_NR_DRAM_BANKS > 4
 #define MEMORY_BANKS_MAX CONFIG_NR_DRAM_BANKS
 #else
@@ -2221,4 +2231,40 @@ int fdt_valid(struct fdt_header **blobp)
 		return 0;
 	}
 	return 1;
+}
+
+int fdt_fixup_pmem_region(void *fdt, u64 pmem_start, u64 pmem_size)
+{
+	char node_name[32];
+	int nodeoffset, len;
+	int err;
+	u8 tmp[4 * 16]; /* Up to 64-bit address + 64-bit size */
+
+	if (!IS_ALIGNED(pmem_start, SZ_2M) ||
+	    !IS_ALIGNED(pmem_start + pmem_size, SZ_2M)) {
+		printf("Start and end address must be 2MiB aligned\n");
+		return -1;
+	}
+
+	snprintf(node_name, sizeof(node_name), "pmem@%llx", pmem_start);
+	nodeoffset = fdt_find_or_add_subnode(fdt, 0, node_name);
+	if (nodeoffset < 0)
+		return nodeoffset;
+
+	err = fdt_setprop_string(fdt, nodeoffset, "compatible", "pmem-region");
+	if (err)
+		return err;
+	err = fdt_setprop_empty(fdt, nodeoffset, "volatile");
+	if (err)
+		return err;
+
+	len = fdt_pack_reg(fdt, tmp, &pmem_start, &pmem_size, 1);
+	err = fdt_setprop(fdt, nodeoffset, "reg", tmp, len);
+	if (err < 0) {
+		printf("WARNING: could not set pmem %s %s.\n", "reg",
+		       fdt_strerror(err));
+		return err;
+	}
+
+	return 0;
 }

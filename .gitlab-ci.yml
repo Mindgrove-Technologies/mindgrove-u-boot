@@ -20,7 +20,7 @@ workflow:
 
 # Grab our configured image.  The source for this is found
 # in the u-boot tree at tools/docker/Dockerfile
-image: ${MIRROR_DOCKER}/trini/u-boot-gitlab-ci-runner:jammy-20240911.1-08Dec2024
+image: ${MIRROR_DOCKER}/trini/u-boot-gitlab-ci-runner:jammy-20250714-25Jul2025
 
 # We run some tests in different order, to catch some failures quicker.
 stages:
@@ -40,6 +40,7 @@ stages:
     # qemu_arm64_lwip_defconfig is the same as qemu_arm64 but with NET_LWIP enabled.
     # The test config and the boardenv file from qemu_arm64 can be re-used so create symlinks
     - ln -s conf.qemu_arm64_na /tmp/uboot-test-hooks/bin/travis-ci/conf.qemu_arm64_lwip_na
+    - ln -s u_boot_boardenv_qemu_arm64_na.py /tmp/uboot-test-hooks/py/travis-ci/u_boot_boardenv_qemu_arm64_lwip_na.py
     - ln -s travis-ci /tmp/uboot-test-hooks/bin/`hostname`
     - ln -s travis-ci /tmp/uboot-test-hooks/py/`hostname`
     - if [[ "${TEST_PY_BD}" == "qemu-riscv32_spl" ]]; then
@@ -55,6 +56,11 @@ stages:
         wget -O /tmp/fip.bin https://artifacts.codelinaro.org/artifactory/linaro-419-sbsa-ref/latest/tf-a/fip.bin;
         export BINMAN_INDIRS=/tmp;
       fi
+    # Prepare python environment
+    - python3 -m venv /tmp/venv;
+      . /tmp/venv/bin/activate;
+      pip install -r test/py/requirements.txt -r tools/binman/requirements.txt
+        -r tools/buildman/requirements.txt -r tools/u_boot_pylib/requirements.txt
 
   after_script:
     - cp -v /tmp/${TEST_PY_BD}/*.{html,css,xml} .
@@ -90,21 +96,37 @@ stages:
         /opt/coreboot/cbfstool ${UBOOT_TRAVIS_BUILD_DIR}/coreboot.rom remove -n fallback/payload;
         /opt/coreboot/cbfstool ${UBOOT_TRAVIS_BUILD_DIR}/coreboot.rom add-flat-binary -f ${UBOOT_TRAVIS_BUILD_DIR}/u-boot.bin -n fallback/payload -c LZMA -l 0x1110000 -e 0x1110000;
       fi
-    - virtualenv -p /usr/bin/python3 /tmp/venv
-    - . /tmp/venv/bin/activate
-    - pip install -r test/py/requirements.txt
+    # If we have TF-A binaries, we need to use them.
+    - if [[ -d /opt/tf-a/"${TEST_PY_BD}" ]]; then
+        cp /opt/tf-a/"${TEST_PY_BD}"/fip.bin /opt/tf-a/"${TEST_PY_BD}"/bl1.bin /tmp/;
+        export fip=/tmp/fip.bin;
+        export bl1=/tmp/bl1.bin;
+        export PATH=/opt/Base_RevC_AEMvA_pkg/models/Linux64_GCC-9.3:${PATH};
+      fi
     # "${var:+"-k $var"}" expands to "" if $var is empty, "-k $var" if not
     - export PATH=/opt/qemu/bin:/tmp/uboot-test-hooks/bin:${PATH};
       export PYTHONPATH=/tmp/uboot-test-hooks/py/travis-ci;
-      ./test/py/test.py -ra --bd ${TEST_PY_BD} ${TEST_PY_ID}
+      python3 -m http.server 80 --directory "${UBOOT_TRAVIS_BUILD_DIR}" > /dev/null 2>&1 &
+      HTTP_PID=$!;
+      sleep 1;
+      if ps -p ${HTTP_PID} > /dev/null; then
+        export HTTP_PID;
+      else
+        unset HTTP_PID;
+      fi;
+      ./test/py/test.py -ra --bd ${TEST_PY_BD} ${TEST_PY_ID} ${TEST_PY_EXTRA}
         ${TEST_PY_TEST_SPEC:+"-k ${TEST_PY_TEST_SPEC}"}
         --build-dir "$UBOOT_TRAVIS_BUILD_DIR"
-        --junitxml=/tmp/${TEST_PY_BD}/results.xml
+        --junitxml=/tmp/${TEST_PY_BD}/results.xml;
+      if [[ -n "${HTTP_PID}" ]]; then
+        kill ${HTTP_PID};
+      fi
   artifacts:
     when: always
     paths:
       - "*.html"
       - "*.css"
+      - results.xml
     reports:
       junit: results.xml
     expire_in: 1 week
@@ -119,9 +141,13 @@ build all platforms in a single job:
   tags:
     - ${HOST}
   script:
+    # Prepare python environment
+    - python3 -m venv /tmp/venv;
+      . /tmp/venv/bin/activate;
+      pip install -r tools/binman/requirements.txt
+        -r tools/buildman/requirements.txt
     - ret=0;
       git config --global --add safe.directory "${CI_PROJECT_DIR}";
-      pip install -r tools/buildman/requirements.txt;
       ./tools/buildman/buildman -o /tmp -PEWM -x xtensa || ret=$?;
       if [[ $ret -ne 0 ]]; then
         ./tools/buildman/buildman -o /tmp -seP;
@@ -147,9 +173,9 @@ check for new CONFIG symbols outside Kconfig:
 docs:
   extends: .testsuites
   script:
-    - virtualenv -p /usr/bin/python3 /tmp/venvhtml
+    - python3 -m venv /tmp/venvhtml
     - . /tmp/venvhtml/bin/activate
-    - pip install -r doc/sphinx/requirements.txt
+    - pip install -r doc/sphinx/requirements.txt -r test/py/requirements.txt
     - make htmldocs KDOC_WERROR=1
     - make infodocs
 
@@ -176,10 +202,11 @@ Run binman, buildman, dtoc, Kconfig and patman testsuites:
       git config --global user.email trini@konsulko.com;
       git config --global --add safe.directory "${CI_PROJECT_DIR}";
       export USER=gitlab;
-      virtualenv -p /usr/bin/python3 /tmp/venv;
+      python3 -m venv /tmp/venv;
       . /tmp/venv/bin/activate;
-      pip install -r test/py/requirements.txt;
-      pip install -r tools/buildman/requirements.txt;
+      pip install -r test/py/requirements.txt -r tools/binman/requirements.txt
+        -r tools/buildman/requirements.txt -r tools/patman/requirements.txt
+        -r tools/u_boot_pylib/requirements.txt;
       export UBOOT_TRAVIS_BUILD_DIR=/tmp/tools-only;
       export PYTHONPATH="${UBOOT_TRAVIS_BUILD_DIR}/scripts/dtc/pylibfdt";
       export PATH="${UBOOT_TRAVIS_BUILD_DIR}/scripts/dtc:${PATH}";
@@ -187,7 +214,10 @@ Run binman, buildman, dtoc, Kconfig and patman testsuites:
       ./tools/buildman/buildman -T0 -o ${UBOOT_TRAVIS_BUILD_DIR} -w
         --board tools-only;
       set -e;
-      ./tools/binman/binman --toolpath ${UBOOT_TRAVIS_BUILD_DIR}/tools test;
+      export TOOLPATH="--toolpath ${UBOOT_TRAVIS_BUILD_DIR}/tools --toolpath /opt/coreboot";
+      ./tools/binman/binman ${TOOLPATH} tool -f missing;
+      ./tools/binman/binman ${TOOLPATH} test;
+      ./tools/binman/binman ${TOOLPATH} test -T;
       ./tools/buildman/buildman -t;
       ./tools/dtoc/dtoc -t;
       ./tools/patman/patman test;
@@ -198,9 +228,11 @@ Run pylint:
   extends: .testsuites
   script:
     - git config --global --add safe.directory "${CI_PROJECT_DIR}"
-    - pip install -r test/py/requirements.txt
-    - pip install -r tools/buildman/requirements.txt
-    - pip install asteval pylint==2.12.2 pyopenssl
+    - python3 -m venv /tmp/venv
+    - . /tmp/venv/bin/activate
+    - pip install -r test/py/requirements.txt -r tools/binman/requirements.txt
+        -r tools/buildman/requirements.txt -r tools/patman/requirements.txt
+        -r tools/u_boot_pylib/requirements.txt asteval pylint==3.3.4 pyopenssl
     - export PATH=${PATH}:~/.local/bin
     - echo "[MASTER]" >> .pylintrc
     - echo "load-plugins=pylint.extensions.docparams" >> .pylintrc
@@ -230,33 +262,61 @@ Check packing of Python tools:
 
 # Test sandbox with test.py
 sandbox test.py:
+  parallel:
+    matrix:
+      - HOST: "arm64"
+      - HOST: "amd64"
   tags:
-    - ${DEFAULT_AMD64_TAG}
+    - ${HOST}
   variables:
     TEST_PY_BD: "sandbox"
+    TEST_PY_EXTRA: "--timing"
   <<: *buildman_and_testpy_dfn
 
 sandbox with clang test.py:
+  parallel:
+    matrix:
+      - HOST: "arm64"
+      - HOST: "amd64"
   tags:
-    - ${DEFAULT_AMD64_TAG}
+    - ${HOST}
   variables:
     TEST_PY_BD: "sandbox"
-    OVERRIDE: "-O clang-17"
+    OVERRIDE: "-O clang-18"
   <<: *buildman_and_testpy_dfn
 
 sandbox64 test.py:
+  parallel:
+    matrix:
+      - HOST: "arm64"
+      - HOST: "amd64"
   tags:
-    - ${DEFAULT_AMD64_TAG}
+    - ${HOST}
   variables:
     TEST_PY_BD: "sandbox64"
   <<: *buildman_and_testpy_dfn
 
 sandbox64 with clang test.py:
+  parallel:
+    matrix:
+      - HOST: "arm64"
+      - HOST: "amd64"
   tags:
-    - ${DEFAULT_AMD64_TAG}
+    - ${HOST}
   variables:
     TEST_PY_BD: "sandbox64"
-    OVERRIDE: "-O clang-17"
+    OVERRIDE: "-O clang-18"
+  <<: *buildman_and_testpy_dfn
+
+sandbox64_lwip test.py:
+  parallel:
+    matrix:
+      - HOST: "arm64"
+      - HOST: "amd64"
+  tags:
+    - ${HOST}
+  variables:
+    TEST_PY_BD: "sandbox64_lwip"
   <<: *buildman_and_testpy_dfn
 
 sandbox_spl test.py:
@@ -296,13 +356,6 @@ sandbox trace_test.py:
 evb-ast2500 test.py:
   variables:
     TEST_PY_BD: "evb-ast2500"
-    TEST_PY_TEST_SPEC: "not sleep"
-    TEST_PY_ID: "--id qemu"
-  <<: *buildman_and_testpy_dfn
-
-evb-ast2600 test.py:
-  variables:
-    TEST_PY_BD: "evb-ast2600"
     TEST_PY_TEST_SPEC: "not sleep"
     TEST_PY_ID: "--id qemu"
   <<: *buildman_and_testpy_dfn
@@ -466,18 +519,35 @@ r2dplus_tulip test.py:
     TEST_PY_ID: "--id tulip_qemu"
   <<: *buildman_and_testpy_dfn
 
-sifive_unleashed_sdcard test.py:
-  variables:
-    TEST_PY_BD: "sifive_unleashed"
-    TEST_PY_TEST_SPEC: "not sleep"
-    TEST_PY_ID: "--id sdcard_qemu"
-  <<: *buildman_and_testpy_dfn
+# This is broken upsteam: https://gitlab.com/qemu-project/qemu/-/issues/2945
+#sifive_unleashed_sdcard test.py:
+#  variables:
+#    TEST_PY_BD: "sifive_unleashed"
+#    TEST_PY_TEST_SPEC: "not sleep"
+#    TEST_PY_ID: "--id sdcard_qemu"
+#  <<: *buildman_and_testpy_dfn
 
 sifive_unleashed_spi-nor test.py:
   variables:
     TEST_PY_BD: "sifive_unleashed"
     TEST_PY_TEST_SPEC: "not sleep"
     TEST_PY_ID: "--id spi-nor_qemu"
+  <<: *buildman_and_testpy_dfn
+
+vexpress_fvp test.py:
+  variables:
+    TEST_PY_BD: "vexpress_fvp"
+    TEST_PY_TEST_SPEC: "not sleep and not hostfs"
+  tags:
+    - ${DEFAULT_AMD64_TAG}
+  <<: *buildman_and_testpy_dfn
+
+vexpress_fvp_bloblist test.py:
+  variables:
+    TEST_PY_BD: "vexpress_fvp_bloblist"
+    TEST_PY_TEST_SPEC: "not sleep and not hostfs"
+  tags:
+    - ${DEFAULT_AMD64_TAG}
   <<: *buildman_and_testpy_dfn
 
 xilinx_zynq_virt test.py:
@@ -522,9 +592,6 @@ coreboot test.py:
   dependencies: []
   tags: [ 'lab' ]
   script:
-    - if [[ -z "${SJG_LAB}" ]]; then
-        exit 0;
-      fi
     # Environment:
     #   SRC  - source tree
     #   OUT  - output directory for builds
@@ -539,8 +606,10 @@ coreboot test.py:
     - export strategy="-s uboot -e off"
     - export USE_LABGRID_SJG=1
     # export verbose="-v"
-    - ${SRC}/test/py/test.py --role ${ROLE} --build-dir "${OUT}"
-        --capture=tee-sys -k "not bootstd" || ret=$?
+    - ${SRC}/test/py/test.py -ra --role ${ROLE} ${TEST_PY_EXTRA:-"--capture=tee-sys"}
+        --build-dir "${OUT}"
+        ${TEST_PY_TEST_SPEC:+"-k ${TEST_PY_TEST_SPEC}"}
+        --junitxml=${OUT}/results.xml || ret=$?
     - U_BOOT_BOARD_IDENTITY="${ROLE}" u-boot-test-release || true
     - if [[ $ret -ne 0 ]]; then
         exit $ret;
@@ -550,6 +619,9 @@ coreboot test.py:
     paths:
       - "build/${BOARD}/test-log.html"
       - "build/${BOARD}/multiplexed_log.css"
+      - "build/${BOARD}/results.xml"
+    reports:
+      junit: "build/${BOARD}/results.xml"
     expire_in: 1 week
 
 rpi3:
@@ -676,4 +748,10 @@ rpi:
 vf2:
   variables:
     ROLE: vf2
+  <<: *lab_dfn
+
+qemu-x86_64:
+  variables:
+    ROLE: qemu-x86_64
+    TEST_PY_TEST_SPEC: "and not sleep"
   <<: *lab_dfn

@@ -36,6 +36,7 @@ static const efi_guid_t efi_http_guid = EFI_HTTP_PROTOCOL_GUID;
 struct efi_http_instance {
 	struct efi_http_protocol http;
 	efi_handle_t handle;
+	struct efi_service_binding_protocol *parent;
 	bool configured;
 	void *http_load_addr;
 	ulong file_size;
@@ -188,7 +189,7 @@ static efi_status_t EFIAPI efi_http_configure(struct efi_http_protocol *this,
 
 	if (!ipv4_node->use_default_address) {
 		efi_net_set_addr((struct efi_ipv4_address *)&ipv4_node->local_address,
-				 (struct efi_ipv4_address *)&ipv4_node->local_subnet, NULL);
+				 (struct efi_ipv4_address *)&ipv4_node->local_subnet, NULL, NULL);
 	}
 
 	http_instance->current_offset = 0;
@@ -243,7 +244,7 @@ static efi_status_t EFIAPI efi_http_request(struct efi_http_protocol *this,
 
 	ret = efi_net_do_request(url_8, current_method, &http_instance->http_load_addr,
 				 &http_instance->status_code, &http_instance->file_size,
-				 http_instance->headers_buffer);
+				 http_instance->headers_buffer, http_instance->parent);
 	if (ret != EFI_SUCCESS)
 		goto out;
 
@@ -408,6 +409,7 @@ static efi_status_t EFIAPI efi_http_service_binding_create_child(
 		goto failure_to_add_protocol;
 	}
 
+	new_instance->parent = this;
 	efi_add_handle(new_instance->handle);
 	*child_handle = new_instance->handle;
 
@@ -451,7 +453,6 @@ static efi_status_t EFIAPI efi_http_service_binding_destroy_child(
 	efi_status_t ret = EFI_SUCCESS;
 	struct efi_http_instance *http_instance;
 	struct efi_handler *phandler;
-	void *protocol_interface;
 
 	if (num_instances == 0)
 		return EFI_EXIT(EFI_NOT_FOUND);
@@ -461,18 +462,18 @@ static efi_status_t EFIAPI efi_http_service_binding_destroy_child(
 
 	efi_search_protocol(child_handle, &efi_http_guid, &phandler);
 
-	if (phandler)
-		protocol_interface = phandler->protocol_interface;
+	if (!phandler)
+		return EFI_EXIT(EFI_UNSUPPORTED);
 
 	ret = efi_delete_handle(child_handle);
 	if (ret != EFI_SUCCESS)
 		return EFI_EXIT(ret);
 
-	http_instance = (struct efi_http_instance *)protocol_interface;
+	http_instance = phandler->protocol_interface;
 	efi_free_pool(http_instance->http_load_addr);
 	http_instance->http_load_addr = NULL;
 
-	free(protocol_interface);
+	free(phandler->protocol_interface);
 
 	num_instances--;
 

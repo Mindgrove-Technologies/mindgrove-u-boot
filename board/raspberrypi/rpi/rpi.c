@@ -193,6 +193,21 @@ static const struct rpi_model rpi_models_new_scheme[] = {
 		DTB_DIR "bcm2712-rpi-5-b.dtb",
 		true,
 	},
+	[0x18] = {
+		"Compute Module 5",
+		DTB_DIR "bcm2712-rpi-cm5-cm5io.dtb",
+		true,
+	},
+	[0x19] = {
+		"500",
+		DTB_DIR "bcm2712-rpi-500.dtb",
+		true,
+	},
+	[0x1A] = {
+		"Compute Module 5 Lite",
+		DTB_DIR "bcm2712-rpi-cm5l-cm5io.dtb",
+		true,
+	},
 };
 
 static const struct rpi_model rpi_models_old_scheme[] = {
@@ -344,9 +359,6 @@ static void set_fdtfile(void)
  */
 static void set_fdt_addr(void)
 {
-	if (env_get("fdt_addr"))
-		return;
-
 	if (fdt_magic(fw_dtb_pointer) != FDT_MAGIC)
 		return;
 
@@ -579,8 +591,17 @@ void  update_fdt_from_fw(void *fdt, void *fw_fdt)
 	/* kernel address randomisation seed as provided by the firmware */
 	copy_property(fdt, fw_fdt, "/chosen", "kaslr-seed");
 
+	/* warnings from the firmware (if any) */
+	copy_property(fdt, fw_fdt, "/chosen", "user-warnings");
+
 	/* address of the PHY device as provided by the firmware  */
 	copy_property(fdt, fw_fdt, "ethernet0/mdio@e14/ethernet-phy@1", "reg");
+
+	/* Bluetooth device address as provided by the firmware */
+	copy_property(fdt, fw_fdt, "/soc/serial@7e201000/bluetooth", "local-bd-address");
+
+	/* copy uart clk as provided by the firmware */
+	copy_property(fdt, fw_fdt, "/clocks/clk-uart", "clock-frequency");
 }
 
 int ft_board_setup(void *blob, struct bd_info *bd)
@@ -589,11 +610,13 @@ int ft_board_setup(void *blob, struct bd_info *bd)
 
 	update_fdt_from_fw(blob, (void *)fw_dtb_pointer);
 
-	node = fdt_node_offset_by_compatible(blob, -1, "simple-framebuffer");
-	if (node < 0)
-		fdt_simplefb_add_node(blob);
-	else
-		fdt_simplefb_enable_and_mem_rsv(blob);
+	if (CONFIG_IS_ENABLED(FDT_SIMPLEFB)) {
+		node = fdt_node_offset_by_compatible(blob, -1, "simple-framebuffer");
+		if (node < 0)
+			fdt_simplefb_add_node(blob);
+		else
+			fdt_simplefb_enable_and_mem_rsv(blob);
+	}
 
 #ifdef CONFIG_EFI_LOADER
 	/* Reserve the spin table */
@@ -768,7 +791,7 @@ static int rpi_acpi_write_ssdt(struct acpi_ctx *ctx, const struct acpi_writer *e
 
 	/* (Re)calculate length and checksum */
 	ssdt->length = ctx->current - (void *)ssdt;
-	ssdt->checksum = table_compute_checksum((void *)ssdt, ssdt->length);
+	acpi_update_checksum(ssdt);
 	log_debug("SSDT at %p, length %x\n", ssdt, ssdt->length);
 
 	/* Drop the table if it is empty */

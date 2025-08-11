@@ -6,11 +6,11 @@
  */
 
 #include <console.h>
+#include <env.h>
 #include <fdt_support.h>
 #include <mapmem.h>
 #include <asm/global_data.h>
 #include <linux/libfdt.h>
-#include <test/suites.h>
 #include <test/ut.h>
 
 DECLARE_GLOBAL_DATA_PTR;

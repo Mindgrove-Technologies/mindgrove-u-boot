@@ -6,7 +6,7 @@
 / {
 	/* When running as a first-stage bootloader this isn't filled in automatically */
 	memory@80000000 {
-		reg = <0 0x80000000 0 0x3da00000>;
+		reg = <0 0x80000000 0 0x40000000>;
 	};
 };
 
@@ -15,6 +15,6 @@
  * because SBL de-initialises them. Indicate that the UART pins should be configured
  * during all boot stages.
  */
-&blsp_uart2_default {
+&blsp_uart2_console_default {
 	bootph-all;
 };

@@ -15,6 +15,7 @@ config WATCHDOG_AUTOSTART
 	bool "Automatically start watchdog timer"
 	depends on WDT
 	default n if ARCH_SUNXI
+	default n if ARCH_STM32MP
 	default y
 	help
 	  Automatically start watchdog timer and start servicing it during
@@ -27,9 +28,10 @@ config WATCHDOG_AUTOSTART
 
 config WATCHDOG_TIMEOUT_MSECS
 	int "Watchdog timeout in msec"
-	default 128000 if ARCH_MX31 || ARCH_MX5 || ARCH_MX6
+	default 128000 if ARCH_MX5 || ARCH_MX6
 	default 128000 if ARCH_MX7 || ARCH_VF610
-	default 30000 if ARCH_SOCFPGA
+	default 30000 if ARCH_SNAPDRAGON
+	default 10000 if ARCH_SOCFPGA
 	default 16000 if ARCH_SUNXI
 	default 5376 if ULP_WATCHDOG
 	default 15000 if ARCH_BCM283X
@@ -94,6 +96,15 @@ config WDT_APPLE
 	  Enable support for the watchdog timer on Apple SoCs.
 	  The watchdog will perform a full SoC reset resulting in a
 	  reboot of the entire system.
+
+config WDT_ADI
+	bool "Analog Devices watchdog timer support"
+	select WDT
+	select SPL_WDT if SPL
+	depends on ARCH_SC5XX
+	help
+	  Enable this to support Watchdog Timer on ADI SC57X, SC58X, SC59X,
+	  and SC59X_64 processors
 
 config WDT_ARMADA_37XX
 	bool "Marvell Armada 37xx watchdog timer support"
@@ -325,6 +336,22 @@ config WDT_K3_RTI_FW_FILE
 	  start.
 
 endif
+
+config WDT_QCOM
+	bool "Qualcomm watchdog timer support"
+	depends on WDT && ARCH_SNAPDRAGON
+	imply WATCHDOG
+	help
+	  Select this to enable Qualcomm watchdog timer, which can be found on
+	  some Qualcomm chips.
+
+config WDT_RENESAS
+	bool "Renesas watchdog timer support"
+	depends on WDT && R8A779F0
+	select CLK
+	select CLK_RENESAS
+	help
+	  Enables Renesas SoC R8A779F0 watchdog timer support.
 
 config WDT_SANDBOX
 	bool "Enable Watchdog Timer support for Sandbox"

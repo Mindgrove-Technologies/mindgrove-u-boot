@@ -7,29 +7,17 @@
  * Based on dwc3-omap.c.
  */
 
-#include <cpu_func.h>
-#include <log.h>
 #include <dm.h>
-#include <dm/device-internal.h>
-#include <dm/lists.h>
-#include <dwc3-uboot.h>
-#include <generic-phy.h>
-#include <linux/bitops.h>
-#include <linux/delay.h>
-#include <linux/printk.h>
-#include <linux/usb/ch9.h>
-#include <linux/usb/gadget.h>
-#include <malloc.h>
-#include <power/regulator.h>
-#include <usb.h>
-#include "core.h"
-#include "gadget.h"
 #include <reset.h>
-#include <clk.h>
-#include <usb/xhci.h>
 #include <asm/gpio.h>
-
+#include <dm/lists.h>
+#include <linux/delay.h>
+#include <linux/usb/gadget.h>
+#include <power/regulator.h>
+#include <usb/xhci.h>
+#include "core.h"
 #include "dwc3-generic.h"
+#include "gadget.h"
 
 struct dwc3_generic_plat {
 	fdt_addr_t base;
@@ -716,6 +704,7 @@ static const struct udevice_id dwc3_glue_ids[] = {
 	{ .compatible = "fsl,imx8mp-dwc3", .data = (ulong)&imx8mp_ops },
 	{ .compatible = "fsl,imx8mq-dwc3" },
 	{ .compatible = "intel,tangier-dwc3" },
+	{ .compatible = "samsung,exynos850-dwusb3" },
 	{ }
 };
 

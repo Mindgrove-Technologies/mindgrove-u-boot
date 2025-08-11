@@ -9,6 +9,19 @@ config VPL_BANNER_PRINT
 	  info. Disabling this option could be useful to reduce VPL boot time
 	  (e.g. approx. 6 ms faster, when output on i.MX6 with 115200 baud).
 
+config VPL_LDSCRIPT
+	string "Linker script for the VPL stage"
+	default "arch/arm/cpu/armv8/u-boot-spl.lds" if ARM64
+	default "arch/\$(ARCH)/cpu/u-boot-spl.lds"
+	help
+	  The TPL stage will usually require a different linker-script
+	  (as it runs from a different memory region) than the regular
+	  U-Boot stage.  Set this to the path of the linker-script to
+	  be used for TPL.
+
+	  May be left empty to trigger the Makefile infrastructure to
+	  fall back to the linker-script used for the SPL stage.
+
 config VPL_BOARD_INIT
 	bool "Call board-specific initialization in VPL"
 	help
@@ -252,6 +265,20 @@ config VPL_MAX_SIZE
 	help
 	  The maximum size (in bytes) of the TPL stage. This size is determined
 	  by the amount of internal SRAM memory.
+
+config VPL_HAVE_INIT_STACK
+	bool "VPL requires a initial, fixed, stack-pointer location"
+	help
+	  Enable if the VPL phase should not use inherit its initial
+	  stack-pointer from the settings for U-Boot proper, but should set
+	  its own value.
+
+config VPL_STACK
+	hex "Address of the initial stack-pointer for the VPL phase"
+	depends on VPL_HAVE_INIT_STACK
+	help
+	  The address of the initial stack-pointer for the VPL phase
+	  Usually this will be the (aligned) top-of-stack.
 
 config VPL_BINMAN_SYMBOLS
 	bool "Declare binman symbols in VPL"

@@ -157,13 +157,33 @@ const struct toradex_som toradex_modules[] = {
 	{ VERDIN_IMX8MMDL_2G_IT,                 "Verdin iMX8M Mini DualLite 2GB IT",    TARGET_IS_ENABLED(VERDIN_IMX8MM)   },
 	{ VERDIN_IMX8MMQ_2G_IT_NO_CAN,           "Verdin iMX8M Mini Quad 2GB IT",        TARGET_IS_ENABLED(VERDIN_IMX8MM)   },
 	{ AQUILA_AM69O_32G_WIFI_BT_IT,           "Aquila AM69 Octa 32GB WB IT",          TARGET_IS_ENABLED(AQUILA_AM69_A72) },
-	{ VERDIN_IMX95H_16G_WIFI_BT_IT,          "Verdin iMX95 Hexa 16GB WB IT",         TARGET_IS_ENABLED(VERDIN_IMX95)    },
+	{ VERDIN_IMX95H_8G_WIFI_BT_IT,           "Verdin iMX95 Hexa 8GB WB IT",          TARGET_IS_ENABLED(VERDIN_IMX95)    },
 	{ VERDIN_IMX8MMQ_4G_WIFI_BT_ET,          "Verdin iMX8M Mini Quad 4GB WB ET",     TARGET_IS_ENABLED(VERDIN_IMX8MM)   },
 	{ APALIS_IMX8QM_WIFI_BT_IT_1300MHZ,      "Apalis iMX8QM 4GB WB IT",              TARGET_IS_ENABLED(APALIS_IMX8)     },
 	{ APALIS_IMX8QM_IT_1300MHZ,              "Apalis iMX8QM 4GB IT",                 TARGET_IS_ENABLED(APALIS_IMX8)     },
 	{ APALIS_IMX8QP_WIFI_BT_1300MHZ,         "Apalis iMX8QP 2GB WB",                 TARGET_IS_ENABLED(APALIS_IMX8)     },
 	{ APALIS_IMX8QP_1300MHZ,                 "Apalis iMX8QP 2GB",                    TARGET_IS_ENABLED(APALIS_IMX8)     },
 	{ APALIS_IMX8QM_8GB_WIFI_BT_IT_1300MHZ,  "Apalis iMX8QM 8GB WB IT",              TARGET_IS_ENABLED(APALIS_IMX8)     },
+	{ SMARC_IMX95_HEXA_8GB_WB_IT,            "SMARC iMX95 Hexa 8GB WB IT",           TARGET_IS_ENABLED(TORADEX_SMARC_IMX95)  },
+	{ SMARC_IMX8MPQ_4GB_WB_IT,               "SMARC iMX8M Plus Quad 4GB WB IT",      TARGET_IS_ENABLED(TORADEX_SMARC_IMX8MP) },
+	{ AQUILA_IMX95_HEXA_16GB_WB_IT,          "Aquila iMX95 Hexa 16GB WB IT",         TARGET_IS_ENABLED(AQUILA_IMX95)         },
+	{ VERDIN_AM62PQ_2G_WIFI_BT_IT,           "Verdin AM62P Quad 2GB WB IT",          TARGET_IS_ENABLED(VERDIN_AM62P_A53)     },
+	{ SMARC_IMX95_HEXA_8GB_IT,               "SMARC iMX95 Hexa 8GB IT",              TARGET_IS_ENABLED(TORADEX_SMARC_IMX95)  },
+	{ SMARC_IMX95_HEXA_4GB_WB_IT,            "SMARC iMX95 Hexa 4GB WB IT",           TARGET_IS_ENABLED(TORADEX_SMARC_IMX95)  },
+	{ SMARC_IMX95_HEXA_4GB_ET,               "SMARC iMX95 Hexa 4GB ET",              TARGET_IS_ENABLED(TORADEX_SMARC_IMX95)  },
+	{ SMARC_IMX95_HEXA_2GB_WB_IT,            "SMARC iMX95 Hexa 2GB WB IT",           TARGET_IS_ENABLED(TORADEX_SMARC_IMX95)  },
+	{ SMARC_IMX95_HEXA_2GB_ET,               "SMARC iMX95 Hexa 2GB ET",              TARGET_IS_ENABLED(TORADEX_SMARC_IMX95)  },
+	{ SMARC_IMX8MPQ_4GB_IT,                  "SMARC iMX8M Plus Quad 4GB IT",         TARGET_IS_ENABLED(TORADEX_SMARC_IMX8MP) },
+	{ SMARC_IMX8MPQ_2GB_WB_IT,               "SMARC iMX8M Plus Quad 2GB WB IT",      TARGET_IS_ENABLED(TORADEX_SMARC_IMX8MP) },
+	{ SMARC_IMX8MPQ_2GB_IT,                  "SMARC iMX8M Plus Quad 2GB IT",         TARGET_IS_ENABLED(TORADEX_SMARC_IMX8MP) },
+	{ SMARC_IMX8MPQL_1GB_WB_ET,              "SMARC iMX8M Plus Quadlite 1GB WB ET",  TARGET_IS_ENABLED(TORADEX_SMARC_IMX8MP) },
+	{ SMARC_IMX8MPQL_1GB_ET,                 "SMARC iMX8M Plus Quadlite 1GB ET",     TARGET_IS_ENABLED(TORADEX_SMARC_IMX8MP) },
+	{ AQUILA_AM69O_32GB_IT,                  "Aquila AM69 Octa 32GB IT",             TARGET_IS_ENABLED(AQUILA_AM69_A72)      },
+	{ AQUILA_AM69O_16GB_WB_IT,               "Aquila AM69 Octa 16GB WB IT",          TARGET_IS_ENABLED(AQUILA_AM69_A72)      },
+	{ AQUILA_AM69O_16GB_IT,                  "Aquila AM69 Octa 16GB IT",             TARGET_IS_ENABLED(AQUILA_AM69_A72)      },
+	{ AQUILA_AM69O_8GB_WB_IT,                "Aquila AM69 Octa 8GB WB IT",           TARGET_IS_ENABLED(AQUILA_AM69_A72)      },
+	{ AQUILA_AM69O_8GB_IT,                   "Aquila AM69 Octa 8GB IT",              TARGET_IS_ENABLED(AQUILA_AM69_A72)      },
+	{ VERDIN_IMX8MMQ_WB_IT_64G,              "Verdin iMX8M Mini Quad 2GB WB IT",     TARGET_IS_ENABLED(VERDIN_IMX8MM)        },
 };
 
 struct pid4list {
@@ -312,7 +332,7 @@ static int tdx_cfg_block_mmc_storage(u8 *config_block, int write)
 
 out:
 	/* Switch back to regular eMMC user partition */
-	blk_select_hwpart_devnum(UCLASS_MMC, 0, 0);
+	blk_select_hwpart_devnum(UCLASS_MMC, dev, 0);
 
 	return ret;
 }

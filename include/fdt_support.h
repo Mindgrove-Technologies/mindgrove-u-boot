@@ -240,11 +240,16 @@ int board_rng_seed(struct abuf *buf);
  */
 const char *board_fdt_chosen_bootargs(const struct fdt_property *fdt_ba);
 
-/*
- * The keystone2 SOC requires all 32 bit aliased addresses to be converted
- * to their 36 physical format. This has to happen after all fdt nodes
- * are added or modified by the image_setup_libfdt(). The ft_board_setup_ex()
- * called at the end of the image_setup_libfdt() is to do that convertion.
+/**
+ * ft_board_setup_ex() - Latest board-specific FDT changes
+ *
+ * @blob: FDT blob to update
+ * @bd:   Pointer to board data
+ *
+ * Execute board-specific device tree modifications that must be the latest FDT
+ * changes and cannot be overwritten by other system fixups.
+ *
+ * This function is called if CONFIG_OF_BOARD_SETUP_EXTENDED is defined.
  */
 void ft_board_setup_ex(void *blob, struct bd_info *bd);
 
@@ -470,6 +475,20 @@ int fdt_valid(struct fdt_header **blobp);
  * Return: the length of the cell type in bytes (4 or 8).
  */
 int fdt_get_cells_len(const void *blob, char *nr_cells_name);
+
+/**
+ * fdt_fixup_pmem_region() - add a pmem node on the device tree
+ *
+ * This functions adds/updates a pmem node to the device tree.
+ * Usually used with EFI installers to preserve installer
+ * images
+ *
+ * @fdt:	device tree provided by caller
+ * @addr:	start address of the pmem node
+ * @size:	size of the memory of the pmem node
+ * Return:	0 on success or < 0 on failure
+ */
+int fdt_fixup_pmem_region(void *fdt, u64 pmem_start, u64 pmem_size);
 
 #endif /* !USE_HOSTCC */
 

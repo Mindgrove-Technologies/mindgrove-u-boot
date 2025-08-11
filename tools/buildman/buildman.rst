@@ -247,7 +247,7 @@ Setting up
    section is ignored. If more than one line is provided, only the last one
    is taken.
 
-#. Make sure you have the require Python pre-requisites
+#. Make sure you have the required Python pre-requisites
 
    Buildman uses multiprocessing, Queue, shutil, StringIO, ConfigParser and
    urllib2. These should normally be available, but if you get an error like
@@ -1328,6 +1328,18 @@ For situations where buildman is invoked from multiple running processes, it is
 sometimes useful to have buildman wait until the others have finished. Use the
 --process-limit option for this: --process-limit 1 will allow only one buildman
 to process jobs at a time.
+
+To build a particular target, rather than the default U-Boot target, use the
+`--target` option. This is unlikely to be useful unless you are building a
+single board.
+
+Buildman normally builds out-of-tree, meaning that the source directory is not
+disturbed by the build. Use `-i` to do an in-tree build instead. Note that this
+does not affect the source directory, since buildman creates a separate git
+'worktree' for each board. This means that it is possible to do an in-tree
+build of an entire branch, or even a 'current source' build for multiple boards.
+As a special case, you can use `-wi` to do an in-tree build in the current
+directory.
 
 Build summary
 -------------

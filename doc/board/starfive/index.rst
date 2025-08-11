@@ -6,7 +6,7 @@ StarFive
 .. toctree::
    :maxdepth: 1
 
+   deepcomputing_fml13v01
    milk-v_mars
-   milk-v_mars_cm
    pine64_star64
    visionfive2

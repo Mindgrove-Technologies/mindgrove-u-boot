@@ -41,14 +41,12 @@ __weak const char *env_fat_get_intf(void)
 __weak char *env_fat_get_dev_part(void)
 {
 #ifdef CONFIG_MMC
-	static char *part_str;
+	/* reserve one more char for the manipulation below */
+	static char part_str[] = CONFIG_ENV_FAT_DEVICE_AND_PART "\0";
 
-	if (!part_str) {
-		part_str = CONFIG_ENV_FAT_DEVICE_AND_PART;
-		if (!strcmp(CONFIG_ENV_FAT_INTERFACE, "mmc") && part_str[0] == ':') {
-			part_str = "0" CONFIG_ENV_FAT_DEVICE_AND_PART;
-			part_str[0] += mmc_get_env_dev();
-		}
+	if (!strcmp(CONFIG_ENV_FAT_INTERFACE, "mmc") && part_str[0] == ':') {
+		part_str[0] = '0' + mmc_get_env_dev();
+		strcpy(&part_str[1], CONFIG_ENV_FAT_DEVICE_AND_PART);
 	}
 
 	return part_str;
@@ -88,7 +86,7 @@ static int env_fat_save(void)
 		return 1;
 	}
 
-#ifdef CONFIG_SYS_REDUNDAND_ENVIRONMENT
+#ifdef CONFIG_ENV_REDUNDANT
 	if (gd->env_valid == ENV_VALID)
 		file = CONFIG_ENV_FAT_FILE_REDUND;
 #endif
@@ -103,7 +101,7 @@ static int env_fat_save(void)
 		return 1;
 	}
 
-#ifdef CONFIG_SYS_REDUNDAND_ENVIRONMENT
+#ifdef CONFIG_ENV_REDUNDANT
 	gd->env_valid = (gd->env_valid == ENV_REDUND) ? ENV_VALID : ENV_REDUND;
 #endif
 
@@ -114,7 +112,7 @@ static int env_fat_save(void)
 static int env_fat_load(void)
 {
 	ALLOC_CACHE_ALIGN_BUFFER(char, buf1, CONFIG_ENV_SIZE);
-#ifdef CONFIG_SYS_REDUNDAND_ENVIRONMENT
+#ifdef CONFIG_ENV_REDUNDANT
 	ALLOC_CACHE_ALIGN_BUFFER(char, buf2, CONFIG_ENV_SIZE);
 	int err2;
 #endif
@@ -155,7 +153,7 @@ static int env_fat_load(void)
 	}
 
 	err1 = file_fat_read(CONFIG_ENV_FAT_FILE, buf1, CONFIG_ENV_SIZE);
-#ifdef CONFIG_SYS_REDUNDAND_ENVIRONMENT
+#ifdef CONFIG_ENV_REDUNDANT
 	err2 = file_fat_read(CONFIG_ENV_FAT_FILE_REDUND, buf2, CONFIG_ENV_SIZE);
 
 	err1 = (err1 >= 0) ? 0 : -1;

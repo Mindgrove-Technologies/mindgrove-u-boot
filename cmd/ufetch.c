@@ -24,8 +24,8 @@
 DECLARE_GLOBAL_DATA_PTR;
 
 #define LINE_WIDTH 40
-#define BLUE "\033[38;5;4m"
-#define YELLOW "\033[38;5;11m"
+#define BLUE "\033[34m"
+#define YELLOW "\033[33m"
 #define BOLD "\033[1m"
 #define RESET "\033[0m"
 static const char * const logo_lines[] = {
@@ -93,7 +93,7 @@ static int do_ufetch(struct cmd_tbl *cmdtp, int flag, int argc,
 	const char *model, *compatible;
 	char *ipaddr;
 	int n_cmds, n_cpus = 0, compatlen;
-	size_t size;
+	size_t size = 0;
 	ofnode np;
 	bool skip_ascii = false;
 

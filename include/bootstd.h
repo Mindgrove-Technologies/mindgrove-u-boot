@@ -11,7 +11,6 @@
 
 #include <alist.h>
 #include <dm/ofnode_decl.h>
-#include <linux/list.h>
 #include <linux/types.h>
 
 struct udevice;
@@ -21,6 +20,9 @@ struct udevice;
  *
  * This is attached to the (only) bootstd device, so there is only one instance
  * of this struct. It provides overall information about bootdevs and bootflows.
+ *
+ * TODO(sjg@chromium.org): Convert prefixes, bootdev_order and env_order to use
+ *	alist
  *
  * @prefixes: NULL-terminated list of prefixes to use for bootflow filenames,
  *	e.g. "/", "/boot/"; NULL if none

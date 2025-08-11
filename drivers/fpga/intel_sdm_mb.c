@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright (C) 2018 Intel Corporation <www.intel.com>
+ * Copyright (C) 2025 Altera Corporation <www.altera.com>
  */
 
 #include <altera.h>
@@ -9,6 +10,8 @@
 #include <watchdog.h>
 #include <asm/arch/mailbox_s10.h>
 #include <asm/arch/smc_api.h>
+#include <asm/cache.h>
+#include <cpu_func.h>
 #include <linux/delay.h>
 #include <linux/errno.h>
 #include <linux/intel-smc.h>
@@ -684,7 +687,8 @@ static int send_bitstream(const void *rbf_data, size_t rbf_size)
 			debug("wr_ret = %d, rbf_data = %p, buf_size = %08lx\n",
 			      wr_ret, rbf_data, buf_size);
 
-			if (wr_ret)
+			if (wr_ret != INTEL_SIP_SMC_STATUS_OK &&
+			    wr_ret != INTEL_SIP_SMC_STATUS_BUSY)
 				continue;
 
 			rbf_size -= buf_size;
@@ -737,6 +741,8 @@ int intel_sdm_mb_load(Altera_desc *desc, const void *rbf_data, size_t rbf_size)
 	struct mbox_err_msg err_msg;
 
 	debug("Invoking FPGA_CONFIG_START...\n");
+
+	flush_dcache_range((unsigned long)rbf_data, (unsigned long)(rbf_data + rbf_size));
 
 	ret = invoke_smc(INTEL_SIP_SMC_FPGA_CONFIG_START, &arg, 1, NULL, 0);
 
@@ -1022,6 +1028,8 @@ int intel_sdm_mb_load(Altera_desc *desc, const void *rbf_data, size_t rbf_size)
 	int ret;
 	u32 resp_len = 2;
 	u32 resp_buf[2];
+
+	flush_dcache_range((unsigned long)rbf_data, (unsigned long)(rbf_data + rbf_size));
 
 	debug("Sending MBOX_RECONFIG...\n");
 	ret = mbox_send_cmd(MBOX_ID_UBOOT, MBOX_RECONFIG, MBOX_CMD_DIRECT, 0,

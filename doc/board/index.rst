@@ -6,6 +6,7 @@ Board-specific doc
 .. toctree::
    :maxdepth: 2
 
+   acer/index
    actions/index
    advantech/index
    andestech/index
@@ -37,11 +38,16 @@ Board-specific doc
    kontron/index
    lenovo/index
    lg/index
+   liebherr/index
    mediatek/index
    microchip/index
    microsoft/index
+   motorola/index
+   nvidia/index
    nxp/index
    openpiton/index
+   ouya/index
+   pegatron/index
    phytec/index
    purism/index
    qualcomm/index
@@ -68,4 +74,5 @@ Board-specific doc
    variscite/index
    wexler/index
    xen/index
+   xiaomi/index
    xilinx/index

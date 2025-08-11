@@ -5,7 +5,6 @@
 
 #include <asm/cache.h>
 #include <command.h>
-#include <env.h>
 #include <hexdump.h>
 #include <linux/if_ether.h>
 #include <linux/sizes.h>
@@ -291,6 +290,7 @@ struct eth_ops {
 #define eth_get_ops(dev) ((struct eth_ops *)(dev)->driver->ops)
 
 struct udevice *eth_get_dev(void); /* get the current device */
+void eth_set_dev(struct udevice *dev); /* set a device */
 unsigned char *eth_get_ethaddr(void); /* get the current device MAC */
 int eth_rx(void);                      /* Check for received packets */
 void eth_halt(void);			/* stop SCC */
@@ -455,20 +455,10 @@ void net_process_received_packet(uchar *in_packet, int len);
  */
 int update_tftp(ulong addr, char *interface, char *devstring);
 
-/**
- * env_get_ip() - Convert an environment value to an ip address
- *
- * @var: Environment variable to convert. The value of this variable must be
- *	in the format a.b.c.d, where each value is a decimal number from
- *	0 to 255
- * Return: IP address, or 0 if invalid
- */
-static inline struct in_addr env_get_ip(char *var)
-{
-	return string_to_ip(env_get(var));
-}
-
 int net_init(void);
+
+/* Called when a network operation fails to know if it should be re-tried */
+int net_start_again(void);
 
 /* NET compatibility */
 enum proto_t;
@@ -488,6 +478,29 @@ int net_loop(enum proto_t protocol);
  * not found
  */
 int dhcp_run(ulong addr, const char *fname, bool autoload);
+
+
+/**
+ * do_ping - Run the ping command
+ *
+ * @cmdtp: Unused
+ * @flag: Command flags (CMD_FLAG_...)
+ * @argc: Number of arguments
+ * @argv: List of arguments
+ * Return: result (see enum command_ret_t)
+ */
+int do_ping(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[]);
+
+/**
+ * do_sntp - Run the sntp command
+ *
+ * @cmdtp: Unused
+ * @flag: Command flags (CMD_FLAG_...)
+ * @argc: Number of arguments
+ * @argv: List of arguments
+ * Return: result (see enum command_ret_t)
+ */
+int do_sntp(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[]);
 
 /**
  * do_tftpb - Run the tftpboot command
@@ -518,7 +531,6 @@ int wget_do_request(ulong dst_addr, char *uri);
  * Return:	true if uri is valid, false if uri is invalid
  */
 bool wget_validate_uri(char *uri);
-//int do_wget(struct cmd_tbl *cmdtp, int flag, int argc, char * const argv[]);
 
 /**
  * enum wget_http_method - http method
@@ -555,6 +567,7 @@ enum wget_http_method {
  *			Filled by client.
  * @hdr_cont_len:	content length according to headers. Filled by wget
  * @headers:		buffer for headers. Filled by wget.
+ * @silent:		do not print anything to the console. Filled by client.
  */
 struct wget_http_info {
 	enum wget_http_method method;
@@ -565,10 +578,13 @@ struct wget_http_info {
 	bool check_buffer_size;
 	u32 hdr_cont_len;
 	char *headers;
+	bool silent;
 };
 
 extern struct wget_http_info default_wget_info;
 extern struct wget_http_info *wget_info;
 int wget_request(ulong dst_addr, char *uri, struct wget_http_info *info);
+
+void net_sntp_set_rtc(u32 seconds);
 
 #endif /* __NET_COMMON_H__ */

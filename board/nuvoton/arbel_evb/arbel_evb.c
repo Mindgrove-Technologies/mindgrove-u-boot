@@ -4,6 +4,7 @@
  */
 
 #include <dm.h>
+#include <event.h>
 #include <asm/io.h>
 #include <asm/arch/gcr.h>
 #include "../common/uart.h"
@@ -20,11 +21,6 @@
 #define DRAM_4GB_SIZE		0x100000000ULL
 
 DECLARE_GLOBAL_DATA_PTR;
-
-int board_init(void)
-{
-	return 0;
-}
 
 phys_size_t get_effective_memsize(void)
 {
@@ -98,9 +94,5 @@ int dram_init_banksize(void)
 	return 0;
 }
 
-int last_stage_init(void)
-{
-	board_set_console();
+EVENT_SPY_SIMPLE(EVT_LAST_STAGE_INIT, board_set_console);
 
-	return 0;
-}

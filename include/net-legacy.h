@@ -17,6 +17,7 @@
 #include <log.h>
 #include <time.h>
 #include <linux/if_ether.h>
+#include <linux/string.h>
 
 struct bd_info;
 struct cmd_tbl;
@@ -346,9 +347,6 @@ extern int net_ntp_time_offset;			/* offset time from UTC */
 #endif
 
 int net_loop(enum proto_t);
-
-/* Load failed.	 Start again. */
-int net_start_again(void);
 
 /* Get size of the ethernet header when we send */
 int net_eth_hdr_size(void);

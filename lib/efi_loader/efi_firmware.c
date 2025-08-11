@@ -12,6 +12,7 @@
 #include <dfu.h>
 #include <efi_loader.h>
 #include <efi_variable.h>
+#include <env.h>
 #include <fwu.h>
 #include <image.h>
 #include <signatures.h>
@@ -55,11 +56,6 @@ struct fmp_state {
 	u32 last_attempt_version; /* not used */
 	u32 last_attempt_status; /* not used */
 };
-
-__weak void set_dfu_alt_info(char *interface, char *devstr)
-{
-	env_set("dfu_alt_info", update_info.dfu_string);
-}
 
 /**
  * efi_firmware_get_image_type_id - get image_type_id
@@ -336,6 +332,8 @@ static efi_status_t efi_fill_image_desc_array(
 
 		return EFI_BUFFER_TOO_SMALL;
 	}
+	if (!image_info)
+		return EFI_INVALID_PARAMETER;
 	*image_info_size = total_size;
 
 	ret = efi_gen_capsule_guids();
@@ -649,8 +647,10 @@ efi_status_t EFIAPI efi_firmware_fit_set_image(
 	efi_status_t (*progress)(efi_uintn_t completion),
 	u16 **abort_reason)
 {
+	int ret;
 	efi_status_t status;
 	struct fmp_state state = { 0 };
+	char *orig_dfu_env;
 
 	EFI_ENTRY("%p %d %p %zu %p %p %p\n", this, image_index, image,
 		  image_size, vendor_code, progress, abort_reason);
@@ -663,7 +663,28 @@ efi_status_t EFIAPI efi_firmware_fit_set_image(
 	if (status != EFI_SUCCESS)
 		return EFI_EXIT(status);
 
-	if (fit_update(image))
+	orig_dfu_env = env_get("dfu_alt_info");
+	if (orig_dfu_env) {
+		orig_dfu_env = strdup(orig_dfu_env);
+		if (!orig_dfu_env) {
+			log_err("strdup() failed!\n");
+			return EFI_EXIT(EFI_OUT_OF_RESOURCES);
+		}
+	}
+	if (env_set("dfu_alt_info", update_info.dfu_string)) {
+		log_err("Unable to set env variable \"dfu_alt_info\"!\n");
+		free(orig_dfu_env);
+		return EFI_EXIT(EFI_DEVICE_ERROR);
+	}
+
+	ret = fit_update(image);
+
+	if (env_set("dfu_alt_info", orig_dfu_env))
+		log_warning("Unable to restore env variable \"dfu_alt_info\".  Further DFU operations may fail!\n");
+
+	free(orig_dfu_env);
+
+	if (ret)
 		return EFI_EXIT(EFI_DEVICE_ERROR);
 
 	efi_firmware_set_fmp_state_var(&state, image_index);
@@ -717,6 +738,7 @@ efi_status_t EFIAPI efi_firmware_raw_set_image(
 	u8 dfu_alt_num;
 	efi_status_t status;
 	struct fmp_state state = { 0 };
+	char *orig_dfu_env;
 
 	EFI_ENTRY("%p %d %p %zu %p %p %p\n", this, image_index, image,
 		  image_size, vendor_code, progress, abort_reason);
@@ -747,8 +769,29 @@ efi_status_t EFIAPI efi_firmware_raw_set_image(
 		}
 	}
 
-	if (dfu_write_by_alt(dfu_alt_num, (void *)image, image_size,
-			     NULL, NULL))
+	orig_dfu_env = env_get("dfu_alt_info");
+	if (orig_dfu_env) {
+		orig_dfu_env = strdup(orig_dfu_env);
+		if (!orig_dfu_env) {
+			log_err("strdup() failed!\n");
+			return EFI_EXIT(EFI_OUT_OF_RESOURCES);
+		}
+	}
+	if (env_set("dfu_alt_info", update_info.dfu_string)) {
+		log_err("Unable to set env variable \"dfu_alt_info\"!\n");
+		free(orig_dfu_env);
+		return EFI_EXIT(EFI_DEVICE_ERROR);
+	}
+
+	ret = dfu_write_by_alt(dfu_alt_num, (void *)image, image_size,
+			       NULL, NULL);
+
+	if (env_set("dfu_alt_info", orig_dfu_env))
+		log_warning("Unable to restore env variable \"dfu_alt_info\".  Further DFU operations may fail!\n");
+
+	free(orig_dfu_env);
+
+	if (ret)
 		return EFI_EXIT(EFI_DEVICE_ERROR);
 
 	efi_firmware_set_fmp_state_var(&state, image_index);

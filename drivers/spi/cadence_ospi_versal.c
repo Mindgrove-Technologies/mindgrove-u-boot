@@ -20,10 +20,17 @@
 int cadence_qspi_apb_dma_read(struct cadence_spi_priv *priv,
 			      const struct spi_mem_op *op)
 {
-	u32 reg, ret, rx_rem, n_rx, bytes_to_dma, data;
+	u32 reg, ret, rx_rem, n_rx, bytes_to_dma, data, status;
 	u8 opcode, addr_bytes, *rxbuf, dummy_cycles;
 
 	n_rx = op->data.nbytes;
+
+	if (op->addr.dtr && (op->addr.val % 2)) {
+		n_rx += 1;
+		writel(op->addr.val & ~0x1,
+		       priv->regbase + CQSPI_REG_INDIRECTRDSTARTADDR);
+	}
+
 	rxbuf = op->data.buf.in;
 	rx_rem = n_rx % 4;
 	bytes_to_dma = n_rx - rx_rem;
@@ -80,6 +87,16 @@ int cadence_qspi_apb_dma_read(struct cadence_spi_priv *priv,
 				   CQSPI_REG_SIZE_ADDRESS_MASK;
 
 		opcode = CMD_4BYTE_FAST_READ;
+
+		/* Set up command opcode extension. */
+		status = readl(priv->regbase + CQSPI_REG_CONFIG);
+		if (status & CQSPI_REG_CONFIG_DTR_PROTO) {
+			ret = cadence_qspi_setup_opcode_ext(priv, op,
+							    CQSPI_REG_OP_EXT_STIG_LSB);
+			if (ret)
+				return ret;
+		}
+
 		dummy_cycles = 8;
 		writel((dummy_cycles << CQSPI_REG_RD_INSTR_DUMMY_LSB) | opcode,
 		       priv->regbase + CQSPI_REG_RD_INSTR);
@@ -102,6 +119,11 @@ int cadence_qspi_apb_dma_read(struct cadence_spi_priv *priv,
 
 		data = readl(priv->regbase + CQSPI_REG_CMDREADDATALOWER);
 		memcpy(rxbuf, &data, rx_rem);
+	}
+
+	if (op->addr.dtr && (op->addr.val % 2)) {
+		rxbuf -= bytes_to_dma;
+		memcpy(rxbuf, rxbuf + 1, n_rx - 1);
 	}
 
 	return 0;
@@ -191,4 +213,23 @@ void cadence_qspi_apb_enable_linear_mode(bool enable)
 			writel(readl(VERSAL_AXI_MUX_SEL) &
 			       ~VERSAL_OSPI_LINEAR_MODE, VERSAL_AXI_MUX_SEL);
 	}
+}
+
+int cadence_device_reset(struct udevice *bus)
+{
+	struct cadence_spi_priv *priv = dev_get_priv(bus);
+	u32 reg;
+
+	reg = readl(priv->regbase + CQSPI_REG_CONFIG);
+	reg |= CQSPI_REG_CONFIG_RESET_CFG_FLD_MASK;
+	writel(reg, priv->regbase + CQSPI_REG_CONFIG);
+
+	writel(reg & ~CQSPI_REG_CONFIG_RESET_PIN_FLD_MASK, priv->regbase + CQSPI_REG_CONFIG);
+	udelay(5);
+	writel(reg | CQSPI_REG_CONFIG_RESET_PIN_FLD_MASK, priv->regbase + CQSPI_REG_CONFIG);
+	udelay(150);
+	writel(reg & ~CQSPI_REG_CONFIG_RESET_PIN_FLD_MASK, priv->regbase + CQSPI_REG_CONFIG);
+	udelay(1200);
+
+	return 0;
 }

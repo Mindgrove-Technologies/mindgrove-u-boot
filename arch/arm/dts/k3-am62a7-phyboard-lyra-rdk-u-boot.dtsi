@@ -13,7 +13,6 @@
 / {
 	chosen {
 		stdout-path = "serial2:115200n8";
-		tick-timer = &main_timer0;
 	};
 
 	aliases {
@@ -66,7 +65,7 @@
 };
 
 &cpsw_port2 {
-	bootph-all;
+	status = "disabled";
 };
 
 &dmsc {
@@ -157,10 +156,6 @@
 	bootph-all;
 };
 
-&main_timer0 {
-	bootph-all;
-};
-
 &main_uart0 {
 	bootph-all;
 };
@@ -236,6 +231,10 @@
 
 &usb0 {
 	dr_mode = "peripheral";
+	bootph-all;
+};
+
+&usb0_phy_ctrl {
 	bootph-all;
 };
 

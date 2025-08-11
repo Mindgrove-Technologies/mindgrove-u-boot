@@ -232,6 +232,8 @@ enum image_type_t {
 	IH_TYPE_FDT_LEGACY,		/* Binary Flat Device Tree Blob	in a Legacy Image */
 	IH_TYPE_RENESAS_SPKG,		/* Renesas SPKG image */
 	IH_TYPE_STARFIVE_SPL,		/* StarFive SPL image */
+	IH_TYPE_TFA_BL31,		/* TFA BL31 image */
+	IH_TYPE_STM32IMAGE_V2,		/* STMicroelectronics STM32 Image V2.0 */
 
 	IH_TYPE_COUNT,			/* Number of image types */
 };
@@ -1687,6 +1689,24 @@ struct sig_header_s {
  */
 int image_pre_load(ulong addr);
 
+#if defined(USE_HOSTCC) && CONFIG_IS_ENABLED(LIBCRYPTO)
+/**
+ * rsa_verify_openssl() - Verify a signature against some data with openssl API
+ *
+ * Verify a RSA PKCS1.5/PSS signature against an expected hash.
+ *
+ * @info:		Specifies the key and algorithms
+ * @region:		Pointer to the input data
+ * @region_count:	Number of region
+ * @sig:		Signature
+ * @sig_len:		Number of bytes in the signature
+ * Return: 0 if verified, -ve on error
+ */
+int rsa_verify_openssl(struct image_sign_info *info,
+		       const struct image_region region[], int region_count,
+		       uint8_t *sig, uint sig_len);
+#endif
+
 /**
  * fit_image_verify_required_sigs() - Verify signatures marked as 'required'
  *
@@ -2114,7 +2134,7 @@ struct fit_loadable_tbl {
  * _handler is the handler function to call after this image type is loaded
  */
 #define U_BOOT_FIT_LOADABLE_HANDLER(_type, _handler) \
-	ll_entry_declare(struct fit_loadable_tbl, _function, fit_loadable) = { \
+	ll_entry_declare(struct fit_loadable_tbl, _type, fit_loadable) = { \
 		.type = _type, \
 		.handler = _handler, \
 	}
