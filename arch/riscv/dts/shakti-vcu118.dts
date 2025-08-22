@@ -26,7 +26,12 @@
   };
   memory@80000000 {
     device_type = "memory";
-    reg = <0x0 0x80000000 0x0  0x10000000>;
+    reg = <0x80000000 0x20000>;
+  };
+  flash@90000000 {
+      reg = <0x90000000 0x8000000>;
+      device-type = "flash";
+      read-only;
   };
   soc {
     #address-cells = <2>;

@@ -4,7 +4,7 @@
   #address-cells = <2>;
   #size-cells = <2>;
   compatible = "mindgrove,socs";
-  model = "mindgrove,secure-iot";
+  model = "mindgrove,s24xx";
   cpus {
     #address-cells = <1>;
     #size-cells = <0>;
@@ -26,12 +26,21 @@
   };
   memory@80000000 {
     device_type = "memory";
-    reg = <0x0 0x80000000 0x0  0x00020000>;
+    reg = <0x0 0x80000000 0x0 0x10000>;
+  };
+  flash@90000000 {
+      reg = <0x0 0x90000000 0x0 0x8000000>;
+      device-type = "flash";
+      read-only;
+  };
+  psram@b0000000 {
+      reg = <0x0 0xb0000000 0x0 0x8000000>;
+      device-type = "memory";
   };
   soc {
     #address-cells = <2>;
     #size-cells = <2>;
-    compatible = "mindgrove,secure-iot-soc", "simple-bus";
+    compatible = "mindgrove,s24xx-soc", "simple-bus";
     ranges;
     clint@2000000 {
       compatible = "riscv,clint0";
@@ -61,8 +70,8 @@
      };
    };
   };
- uart {
-  compatible = "mindgrove,uart0";
-  reg= <0x0 0x11300 0x0 0x1000>;
+ uart:uart@0x11300 {
+  compatible = "mindgrove,uart";
+  reg= <0x0 0x11300 0x0 0x100>;
  };
 };

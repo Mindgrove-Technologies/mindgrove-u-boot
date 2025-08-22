@@ -2,4 +2,4 @@
 #
 # Copyright (c) 2025 Mindgrove Technologies.
 
-obj-y	+= secure-iot.o
+obj-y	+= v26xx.o

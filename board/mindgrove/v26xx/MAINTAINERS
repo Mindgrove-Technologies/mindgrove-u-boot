@@ -1,0 +1,6 @@
+MINDGROVE V26XX BOARD
+M:	Kapil Shyam. M <kapil@mindgrovetech.in>
+S:	Maintained
+F:	board/mindgrove/v26xx/
+F:	include/configs/mindgrove_v26xx.h
+F:	configs/mindgrove-v26xx_defconfig

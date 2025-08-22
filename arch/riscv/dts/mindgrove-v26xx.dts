@@ -1,0 +1,136 @@
+/dts-v1/;
+
+/ {
+    #address-cells = <2>;
+    #size-cells = <2>;
+    compatible = "mindgrove,v26xx";
+    model = "mindgrove,v26xx";
+    
+    aliases {
+        serial0 = &uart0;
+    };
+    
+    chosen {
+    };
+    
+    cpus {
+        #address-cells = <1>;
+        #size-cells = <0>;
+        timebase-frequency = <32768>;
+        
+        CPU0: cpu@0 {
+            device_type = "cpu";
+            reg = <0>;
+            status = "okay";
+            compatible = "mindgrove,c-class", "riscv";
+            riscv,isa = "rv64imafdc";
+            mmu-type = "riscv,sv39";
+            clock-frequency = <1000000000>;
+            CPU0_intc: interrupt-controller {
+                #interrupt-cells = <1>;
+                interrupt-controller;
+                compatible = "riscv,cpu-intc";
+            };
+        };
+        
+        CPU1: cpu@1 {
+            device_type = "cpu";
+            reg = <1>;
+            status = "okay";
+            compatible = "mindgrove,c-class", "riscv";
+            riscv,isa = "rv64imafdc";
+            mmu-type = "riscv,sv39";
+            clock-frequency = <1000000000>;
+            CPU1_intc: interrupt-controller {
+                #interrupt-cells = <1>;
+                interrupt-controller;
+                compatible = "riscv,cpu-intc";
+            };
+        };
+        
+        CPU2: cpu@2 {
+            device_type = "cpu";
+            reg = <2>;
+            status = "okay";
+            compatible = "mindgrove,c-class", "riscv";
+            riscv,isa = "rv64imafdc";
+            mmu-type = "riscv,sv39";
+            clock-frequency = <1000000000>;
+            CPU2_intc: interrupt-controller {
+                #interrupt-cells = <1>;
+                interrupt-controller;
+                compatible = "riscv,cpu-intc";
+            };
+        };
+        
+        CPU3: cpu@3 {
+            device_type = "cpu";
+            reg = <3>;
+            status = "okay";
+            compatible = "mindgrove,c-class", "riscv";
+            riscv,isa = "rv64imafdc";
+            mmu-type = "riscv,sv39";
+            clock-frequency = <1000000000>;
+            CPU3_intc: interrupt-controller {
+                #interrupt-cells = <1>;
+                interrupt-controller;
+                compatible = "riscv,cpu-intc";
+            };
+        };
+    };
+
+    memory@80000000 {
+        device_type = "memory";
+        reg = <0x0 0x80000000 0x0 0x10000000>;
+    };
+
+    flash@90000000 {
+        device_type = "memory";
+        reg = <0x0 0x90000000 0x0 0x8000000>;
+        read-only;
+    };
+
+    psram@b0000000 {
+        device_type = "memory";
+        reg = <0x0 0xb0000000 0x0 0x8000000>;
+    };
+
+    soc {
+        #address-cells = <2>;
+        #size-cells = <2>;
+        compatible = "mindgrove,v26xx-soc", "simple-bus";
+        ranges;
+        
+        clint@2000000 {
+            compatible = "riscv,clint0";
+            interrupts-extended = <&CPU0_intc 3 &CPU0_intc 7 
+                                   &CPU1_intc 3 &CPU1_intc 7
+                                   &CPU2_intc 3 &CPU2_intc 7 
+                                   &CPU3_intc 3 &CPU3_intc 7>;
+            reg = <0x0 0x2000000 0x0 0xc0000>;
+        };
+
+        spi: spi@20100 {
+            compatible = "shakti,spi1";
+            reg = <0x0 0x20100 0x0 0x100>;
+            shakti,controller = <1>;
+            shakti,spi-frequency = <3500000>;
+            shakti,lsb-first = <0x0>;
+            shakti,communication-mode = <0x3>;
+            shakti,cs-high = <0x1>;
+            shakti,fifo-depth = <16>;
+
+            mmc-slot@0 {
+                compatible = "mmc-spi-slot";
+                reg = <0>;
+                voltage-ranges = <3300 3300>;
+                spi-max-frequency = <3500000>;
+            };
+        };
+    };
+
+    uart0: serial@0011300 {
+        compatible = "mindgrove,uart0";
+        reg = <0x0 0x11300 0x0 0x1000>;
+    };
+};
