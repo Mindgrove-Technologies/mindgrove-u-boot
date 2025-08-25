@@ -71,7 +71,7 @@
    };
   };
  uart:uart@0x11300 {
-  compatible = "mindgrove,uart";
+  compatible = "mindgrove,uart0";
   reg= <0x0 0x11300 0x0 0x100>;
  };
 };

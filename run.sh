@@ -1,0 +1,1 @@
+make distclean && make CROSS_COMPILE=riscv64-unknown-linux-gnu- mrproper && make CROSS_COMPILE=riscv64-unknown-linux-gnu- mindgrove-v26xx_defconfig && make CROSS_COMPILE=riscv64-unknown-linux-gnu- -j$(nproc) && rm -rf u-boot.dump && riscv64-unknown-linux-gnu-objdump -D -S u-boot >> u-boot.dump

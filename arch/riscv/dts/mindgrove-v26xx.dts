@@ -5,19 +5,23 @@
     #size-cells = <2>;
     compatible = "mindgrove,v26xx";
     model = "mindgrove,v26xx";
-    
+
     aliases {
         serial0 = &uart0;
     };
-    
+
     chosen {
+        opensbi_config: config {
+            compatible = "opensbi,config";
+            cold-boot-harts = <1 2 3 4>;
+        };
     };
-    
+
     cpus {
         #address-cells = <1>;
         #size-cells = <0>;
         timebase-frequency = <32768>;
-        
+
         CPU0: cpu@0 {
             device_type = "cpu";
             reg = <0>;
@@ -26,13 +30,14 @@
             riscv,isa = "rv64imafdc";
             mmu-type = "riscv,sv39";
             clock-frequency = <1000000000>;
+            phandle = <1>;
             CPU0_intc: interrupt-controller {
                 #interrupt-cells = <1>;
                 interrupt-controller;
                 compatible = "riscv,cpu-intc";
             };
         };
-        
+
         CPU1: cpu@1 {
             device_type = "cpu";
             reg = <1>;
@@ -41,13 +46,14 @@
             riscv,isa = "rv64imafdc";
             mmu-type = "riscv,sv39";
             clock-frequency = <1000000000>;
+            phandle = <2>;
             CPU1_intc: interrupt-controller {
                 #interrupt-cells = <1>;
                 interrupt-controller;
                 compatible = "riscv,cpu-intc";
             };
         };
-        
+
         CPU2: cpu@2 {
             device_type = "cpu";
             reg = <2>;
@@ -56,13 +62,14 @@
             riscv,isa = "rv64imafdc";
             mmu-type = "riscv,sv39";
             clock-frequency = <1000000000>;
+            phandle = <3>;
             CPU2_intc: interrupt-controller {
                 #interrupt-cells = <1>;
                 interrupt-controller;
                 compatible = "riscv,cpu-intc";
             };
         };
-        
+
         CPU3: cpu@3 {
             device_type = "cpu";
             reg = <3>;
@@ -71,6 +78,7 @@
             riscv,isa = "rv64imafdc";
             mmu-type = "riscv,sv39";
             clock-frequency = <1000000000>;
+            phandle = <4>;
             CPU3_intc: interrupt-controller {
                 #interrupt-cells = <1>;
                 interrupt-controller;
@@ -100,13 +108,15 @@
         #size-cells = <2>;
         compatible = "mindgrove,v26xx-soc", "simple-bus";
         ranges;
-        
+
         clint@2000000 {
             compatible = "riscv,clint0";
-            interrupts-extended = <&CPU0_intc 3 &CPU0_intc 7 
-                                   &CPU1_intc 3 &CPU1_intc 7
-                                   &CPU2_intc 3 &CPU2_intc 7 
-                                   &CPU3_intc 3 &CPU3_intc 7>;
+            interrupts-extended = <
+                &CPU0_intc 3 &CPU0_intc 7
+                &CPU1_intc 3 &CPU1_intc 7
+                &CPU2_intc 3 &CPU2_intc 7
+                &CPU3_intc 3 &CPU3_intc 7
+            >;
             reg = <0x0 0x2000000 0x0 0xc0000>;
         };
 
@@ -128,7 +138,7 @@
             };
         };
     };
-
+    
     uart0: serial@0011300 {
         compatible = "mindgrove,uart0";
         reg = <0x0 0x11300 0x0 0x1000>;

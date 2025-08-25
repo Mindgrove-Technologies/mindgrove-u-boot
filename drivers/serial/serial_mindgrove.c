@@ -131,7 +131,7 @@ static const struct dm_serial_ops mindgrove_serial_ops = {
 };
 
 static const struct udevice_id mindgrove_serial_ids[] = {
-	{ .compatible = "mindgrove,uart" },
+	{ .compatible = "mindgrove,uart0" },
 	{ }
 };
 
