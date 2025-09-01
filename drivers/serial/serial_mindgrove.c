@@ -13,12 +13,13 @@
 #include <linux/err.h>
 
 DECLARE_GLOBAL_DATA_PTR;
-#define UART0_BASE_ADDR 0x11300
 
-#ifdef CONFIG_TARGET_SECURE_IOT
-#define SHAKTI_DEFAULT_CLOCK 700000000
+#ifdef CONFIG_TARGET_MINDGROVE_V26XX
+#define MINDGROVE_DEFAULT_CLOCK 1000000000
+#elif CONFIG_TARGET_MINDGROVE_S24XX
+#define MINDGROVE_DEFAULT_CLOCK 700000000
 #else
-#define SHAKTI_DEFAULT_CLOCK 40000000
+#define MINDGROVE_DEFAULT_CLOCK 100000000
 #endif
 #define REG_BAUD	    0x00
 #define REG_TX		    0x04
@@ -82,7 +83,7 @@ static int _mindgrove_serial_getc(struct mindgrove_uart_plat *plat)
     return readb(plat->regs + REG_RX);
 }
 
-static int _mindgrove_serial_putc(struct mindgrove_uart_plat *plat, const char ch)
+static int _mindgrove_serial_putc(struct mindgrove_uart_plat *plat, char ch)
 {
 	int rc;
 
@@ -97,11 +98,11 @@ static int _mindgrove_serial_putc(struct mindgrove_uart_plat *plat, const char c
 
 static int mindgrove_serial_of_to_plat(struct udevice *dev)
 {
-	struct mindgrove_uart_plat *plat = dev_get_plat(dev);
+    struct mindgrove_uart_plat *plat = dev_get_plat(dev);
 
-	plat->regs = (void *)UART0_BASE_ADDR;
-    plat->clock = SHAKTI_DEFAULT_CLOCK;
-	return 0;
+    plat->regs = (volatile void *)devfdt_get_addr(dev);
+    plat->clock = MINDGROVE_DEFAULT_CLOCK;
+    return 0;
 }
 
 static int mindgrove_serial_setbrg(struct udevice *dev, int baudrate)
@@ -117,7 +118,7 @@ static int mindgrove_serial_getc(struct udevice *dev)
     return _mindgrove_serial_getc(plat);
 }
 
-static int mindgrove_serial_putc(struct udevice *dev, const char ch)
+static int mindgrove_serial_putc(struct udevice *dev, char ch)
 {
 	struct mindgrove_uart_plat *plat = dev_get_plat(dev);
     return _mindgrove_serial_putc(plat, ch);
@@ -131,7 +132,7 @@ static const struct dm_serial_ops mindgrove_serial_ops = {
 };
 
 static const struct udevice_id mindgrove_serial_ids[] = {
-	{ .compatible = "mindgrove,uart0" },
+	{ .compatible = "mindgrove,uart" },
 	{ }
 };
 
@@ -147,8 +148,8 @@ U_BOOT_DRIVER(serial_mindgrove) = {
 #ifdef CONFIG_DEBUG_UART_MINDGROVE
 static inline void _debug_uart_init(void)
 {
-	uart_debug.regs = (void *)UART0_BASE_ADDR;
-    uart_debug.clock = SHAKTI_DEFAULT_CLOCK;
+	uart_debug.regs = (void *)CONFIG_DEBUG_UART_BASE;
+    uart_debug.clock = CONFIG_DEBUG_UART_CLOCK;
 
 	_mindgrove_serial_setbrg(&uart_debug, CONFIG_BAUDRATE);
 }

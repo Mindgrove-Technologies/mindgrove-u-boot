@@ -11,6 +11,8 @@
     };
 
     chosen {
+        stdout-path = "serial0:1250000n8";
+        
         opensbi_config: config {
             compatible = "opensbi,config";
             cold-boot-harts = <1 2 3 4>;
@@ -89,7 +91,7 @@
 
     memory@80000000 {
         device_type = "memory";
-        reg = <0x0 0x80000000 0x0 0x10000000>;
+        reg = <0x0 0x80000000 0x0 0x800000>;
     };
 
     flash@90000000 {
@@ -100,7 +102,7 @@
 
     psram@b0000000 {
         device_type = "memory";
-        reg = <0x0 0xb0000000 0x0 0x8000000>;
+        reg = <0x0 0xb0000000 0x0 0x800000>;
     };
 
     soc {
@@ -139,8 +141,11 @@
         };
     };
     
-    uart0: serial@0011300 {
-        compatible = "mindgrove,uart0";
+    uart0: serial@11300 {
+        compatible = "mindgrove,uart";
         reg = <0x0 0x11300 0x0 0x1000>;
+        status = "okay";
+        clock-frequency = <1000000000>;
+        current-speed = <12500000>;
     };
 };
