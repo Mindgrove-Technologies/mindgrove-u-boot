@@ -44,7 +44,6 @@ static struct mindgrove_uart_plat uart_debug;
 
 static int _mindgrove_serial_setbrg(struct mindgrove_uart_plat *plat, int baudrate)
 {
-	int ret;
 	u16 baud = 0;
 /*
 	ret = clk_get_by_index(dev, 0, &clk);
@@ -77,16 +76,12 @@ static int mindgrove_serial_probe(struct udevice *dev)
 
 static int _mindgrove_serial_getc(struct mindgrove_uart_plat *plat)
 {
-	int c;
-
     while ((readw(plat->regs + REG_STATUS) & STS_RX_NOT_EMPTY) == 0);
     return readb(plat->regs + REG_RX);
 }
 
 static int _mindgrove_serial_putc(struct mindgrove_uart_plat *plat, char ch)
 {
-	int rc;
-
 	while(readw(plat->regs + REG_STATUS) &  STS_TX_FULL);
 	writeb(ch, plat->regs + REG_TX);
 /*
@@ -94,6 +89,8 @@ static int _mindgrove_serial_putc(struct mindgrove_uart_plat *plat, char ch)
 	    writeb('\n', plat->regs + REG_TX);
 	    writeb('\r', plat->regs + REG_TX);
     }*/
+
+	return 0;
 }
 
 static int mindgrove_serial_of_to_plat(struct udevice *dev)

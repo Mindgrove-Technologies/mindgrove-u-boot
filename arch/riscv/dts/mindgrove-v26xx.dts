@@ -91,7 +91,7 @@
 
     memory@80000000 {
         device_type = "memory";
-        reg = <0x0 0x80000000 0x0 0x800000>;
+        reg = <0x0 0x80000000 0x0 0x2000000>;
     };
 
     flash@90000000 {
@@ -102,7 +102,7 @@
 
     psram@b0000000 {
         device_type = "memory";
-        reg = <0x0 0xb0000000 0x0 0x800000>;
+        reg = <0x0 0xb0000000 0x0 0x8000000>;
     };
 
     soc {
@@ -122,23 +122,26 @@
             reg = <0x0 0x2000000 0x0 0xc0000>;
         };
 
-        spi: spi@20100 {
-            compatible = "shakti,spi1";
-            reg = <0x0 0x20100 0x0 0x100>;
-            shakti,controller = <1>;
-            shakti,spi-frequency = <3500000>;
-            shakti,lsb-first = <0x0>;
-            shakti,communication-mode = <0x3>;
-            shakti,cs-high = <0x1>;
-            shakti,fifo-depth = <16>;
+        spi0: spi@20000 {
+			compatible = "mindgrove,spi";
+			reg = <0x0 0x20000 0x0 0x100>;
+			spi-max-frequency = <35000000>;
+			mindgrove,fifo-depth = <32>;
+			mindgrove,max-bits-per-word = <8>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "okay";
 
-            mmc-slot@0 {
-                compatible = "mmc-spi-slot";
-                reg = <0>;
-                voltage-ranges = <3300 3300>;
-                spi-max-frequency = <3500000>;
-            };
-        };
+			/* SPI-based SD card */
+			mmc-spi-slot@0 {
+				compatible = "mmc-spi-slot";
+				reg = <0>;
+				max-frequency = <30000000>;
+				voltage-ranges = <3200 3400>;
+				broken-cd;
+                no-1-8-v;
+			};
+		};
     };
     
     uart0: serial@11300 {

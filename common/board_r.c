@@ -607,6 +607,7 @@ static int run_main_loop(void)
 
 static void initcall_run_r(void)
 {
+	asm volatile ("nop");
 	/*
 	 * Please do not add logic to this function (variables, if (), etc.).
 	 * For simplicity it should remain an ordered list of function calls.

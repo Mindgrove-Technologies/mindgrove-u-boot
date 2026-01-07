@@ -501,6 +501,22 @@ config SPI_SHAKTI
 	  
 	  The Shakti SPI controller driver is found on various Shakti SoCs.
 
+config SPI_MINDGROVE
+	bool "Mindgrove SPI controller driver"
+	depends on DM_SPI
+	help
+	  Enable the Mindgrove SPI controller driver. This driver provides
+	  support for SPI controllers found in Mindgrove RISC-V SoCs.
+	  
+	  This driver supports:
+	  - Master mode operation
+	  - Multiple chip selects (up to 4)
+	  - SPI modes 0 and 3 (CPOL/CPHA combinations)
+	  - Configurable clock frequency up to 35MHz
+	  - FIFO-based transfers with 32-byte depth
+	  - SPI flash and SPI-based SD card support
+	  - U-Boot driver model integration
+
 config SPI_ASPEED_SMC
 	bool "ASPEED SPI flash controller driver"
 	depends on DM_SPI && SPI_MEM
