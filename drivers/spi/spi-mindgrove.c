@@ -333,23 +333,29 @@ static int mindgrove_spi_exec_op(struct spi_slave *slave,
 static int mindgrove_spi_set_speed(struct udevice *bus, uint speed)
 {
 	struct mindgrove_spi *spi = dev_get_priv(bus);
-	u32 prescaler, clk_ctrl;
+	u32 prescaler, clk_ctrl, actual_freq;
+
 	if (spi->spi_freq != speed)
 		spi->spi_freq = speed;
-	/* Calculate prescaler */
-	prescaler = (spi->input_clk_hz / spi->spi_freq) - 1U;
+
+	prescaler = (spi->input_clk_hz / spi->spi_freq) - 1;
 
 	if (((spi->input_clk_hz / (prescaler + 1)) > MINDGROVE_SPI_MAX_FREQ) ||
-		((spi->input_clk_hz / (prescaler + 1)) < (spi->input_clk_hz / 0x3FFF)))
-	{
-		dev_err(bus, "Invalid SPI frequency : %d Hz \r\n", speed);
+	    ((spi->input_clk_hz / (prescaler + 1)) < (spi->input_clk_hz / 0x3FFF))) {
+		dev_err(bus, "Invalid SPI frequency: %d Hz\n", speed);
 		return -EINVAL;
 	}
+
 	spi->prescaler = prescaler;
+	actual_freq = spi->input_clk_hz / (prescaler + 1);
+
 	clk_ctrl = readl(spi->base + MINDGROVE_SPI_REG_CLK_CTRL);
 	clk_ctrl &= ~MINDGROVE_SPI_CLK_CTRL_PRESCALAR_MASK;
 	clk_ctrl |= (prescaler << MINDGROVE_SPI_CLK_CTRL_PRESCALAR_SHIFT);
 	writel(clk_ctrl, spi->base + MINDGROVE_SPI_REG_CLK_CTRL);
+
+	printf("SPI: Requested freq: %u Hz, Prescaler: %u, Actual freq: %u Hz\n",
+	       speed, prescaler, actual_freq);
 
 	return 0;
 }

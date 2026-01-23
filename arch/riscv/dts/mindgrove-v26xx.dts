@@ -12,11 +12,49 @@
 
     chosen {
         stdout-path = "serial0:1250000n8";
+        /* Ensure bootargs point to the correct console */
+        bootargs = "earlycon=sbi console=ttyLS0,1250000n8 root=/dev/mmcblk0p1 rootwait";
         
         opensbi_config: config {
             compatible = "opensbi,config";
-            cold-boot-harts = <1 2 3 4>;
+            cold-boot-harts = <&CPU0 &CPU1 &CPU2 &CPU3>;
         };
+    };
+
+    /* * NEW: Reserved memory section. 
+     * This tells Linux: "Do not touch this memory, it belongs to firmware/kernel text."
+     */
+    reserved-memory {
+        #address-cells = <2>;
+        #size-cells = <2>;
+        ranges;
+
+        /* Protect OpenSBI and the first 32MB of the kernel image */
+        firmware_res: memory@80000000 {
+            reg = <0x0 0x80000000 0x0 0x02000000>;
+            no-map;
+        };
+    };
+
+    /* Primary System RAM */
+    memory@80000000 {
+        device_type = "memory";
+        reg = <0x0 0x80000000 0x0 0x8000000>; // 128MB
+    };
+
+    /* * FIXED: Changed device_type. 
+     * If these are 'memory', Linux tries to use them as RAM. 
+     * Flash cannot be used as system heap RAM.
+     */
+    flash@90000000 {
+        compatible = "mtd-rom"; 
+        reg = <0x0 0x90000000 0x0 0x8000000>;
+        read-only;
+    };
+
+    psram@b0000000 {
+        compatible = "mmio-sram";
+        reg = <0x0 0xb0000000 0x0 0x8000000>;
     };
 
     cpus {
@@ -89,22 +127,6 @@
         };
     };
 
-    memory@80000000 {
-        device_type = "memory";
-        reg = <0x0 0x80000000 0x0 0x2000000>;
-    };
-
-    flash@90000000 {
-        device_type = "memory";
-        reg = <0x0 0x90000000 0x0 0x8000000>;
-        read-only;
-    };
-
-    psram@b0000000 {
-        device_type = "memory";
-        reg = <0x0 0xb0000000 0x0 0x8000000>;
-    };
-
     soc {
         #address-cells = <2>;
         #size-cells = <2>;
@@ -133,13 +155,11 @@
 			status = "okay";
 
 			/* SPI-based SD card */
-			mmc-spi-slot@0 {
+			mmc@0 {
 				compatible = "mmc-spi-slot";
 				reg = <0>;
-				max-frequency = <30000000>;
+				spi-max-frequency = <16000000>;
 				voltage-ranges = <3200 3400>;
-				broken-cd;
-                no-1-8-v;
 			};
 		};
     };
