@@ -160,6 +160,7 @@
 				reg = <0>;
 				spi-max-frequency = <16000000>;
 				voltage-ranges = <3200 3400>;
+                no-1-8-v;
 			};
 		};
     };

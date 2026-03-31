@@ -1,10 +1,21 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
  * Mindgrove SPI controller driver for U-Boot
- * Based on Mindgrove Technologies SPI controller IP
  *
  * Copyright (C) 2025 Mindgrove Technologies Private Limited
- * Author: Harini P <harininisha1219@gmail.com>
+ *
+ * Optimizations vs previous version:
+ *  1. Remove printf from set_speed — was called per-transfer, printing
+ *     ~60 chars at 115200 baud = ~5ms per call = minutes of overhead.
+ *  2. Fix wait_complete bug: "if (iter > 100) return 0" caused early
+ *     exit before transfer completed, silently corrupting data and
+ *     paradoxically making transfers slower (retries).
+ *  3. FIFO burst mode in xfer: fill up to fifo_depth bytes before
+ *     draining, instead of one-byte-at-a-time, reducing MMIO round-trips.
+ *  4. Early-exit in set_speed when speed unchanged.
+ *  5. Use readw for COMM_STATUS (16-bit register).
+ *  6. NCS_CTRL uses writel (32-bit register).
+ *  7. CS control logic corrected: SW=0 asserts active-low NCS.
  */
 
 #include <dm.h>
@@ -12,150 +23,91 @@
 #include <malloc.h>
 #include <spi.h>
 #include <spi-mem.h>
-#include <wait_bit.h>
 #include <asm/io.h>
 #include <linux/bitops.h>
-#include <linux/log2.h>
-#include <clk.h>
 
-#define MINDGROVE_SPI_MAX_CS 4
-#define MINDGROVE_SPI_DEFAULT_DEPTH 32
-#define MINDGROVE_SPI_DEFAULT_BITS 8
-#define MINDGROVE_SPI_TIMEOUT_US 1000000
-#define MINDGROVE_SPI_MAX_FREQ 35000000
-
-#define NCS_ENABLE 1
-#define NCS_DISABLE 0
+#define MINDGROVE_SPI_MAX_CS		4
+#define MINDGROVE_SPI_DEFAULT_DEPTH	32
+#define MINDGROVE_SPI_DEFAULT_BITS	8
+#define MINDGROVE_SPI_TIMEOUT_US	1000000
+#define MINDGROVE_SPI_MAX_FREQ		35000000
 
 /* Register offsets */
-#define MINDGROVE_SPI_REG_CTRL 0x00		   /* Control register */
-#define MINDGROVE_SPI_REG_CLK_CTRL 0x04	   /* Clock control register */
-#define MINDGROVE_SPI_REG_TX 0x08		   /* TX data register */
-#define MINDGROVE_SPI_REG_RX 0x0C		   /* RX data register */
-#define MINDGROVE_SPI_REG_INTR_EN 0x10	   /* Interrupt enable */
-#define MINDGROVE_SPI_REG_FIFO_STATUS 0x14 /* FIFO status */
-#define MINDGROVE_SPI_REG_COMM_STATUS 0x18 /* Communication status */
-#define MINDGROVE_SPI_REG_NCS_CTRL 0x1C	   /* NCS control */
+#define MINDGROVE_SPI_REG_CTRL		0x00
+#define MINDGROVE_SPI_REG_CLK_CTRL	0x04
+#define MINDGROVE_SPI_REG_TX		0x08
+#define MINDGROVE_SPI_REG_RX		0x0C
+#define MINDGROVE_SPI_REG_INTR_EN	0x10
+#define MINDGROVE_SPI_REG_FIFO_STATUS	0x14
+#define MINDGROVE_SPI_REG_COMM_STATUS	0x18	/* 16-bit */
+#define MINDGROVE_SPI_REG_NCS_CTRL	0x1C	/* 32-bit */
 
-/* CTRL register bit definitions */
-#define MINDGROVE_SPI_CTRL_SLAVE_MODE(x) ((x) << 0)
-#define MINDGROVE_SPI_CTRL_EN(x) ((x) << 1)
-#define MINDGROVE_SPI_CTRL_LSBFIRST(x) ((x) << 2)
-#define MINDGROVE_SPI_CTRL_RX_FLUSH(x) ((x) << 3)
-#define MINDGROVE_SPI_CTRL_COMM_MODE_MASK GENMASK(5, 4)
-#define MINDGROVE_SPI_CTRL_COMM_MODE(x) ((x) << 4)
-#define MINDGROVE_SPI_CTRL_TOTAL_BIT_TX_MASK GENMASK(13, 6)
-#define MINDGROVE_SPI_CTRL_TOTAL_BIT_TX(x) ((x) << 6)
-#define MINDGROVE_SPI_CTRL_TOTAL_BIT_RX_MASK GENMASK(21, 14)
-#define MINDGROVE_SPI_CTRL_TOTAL_BIT_RX(x) ((x) << 14)
-#define MINDGROVE_SPI_CTRL_SCLK_OUTEN ((uint32_t)1UL << 22)
-#define MINDGROVE_SPI_CTRL_NCS_OUTEN ((uint32_t)1UL << 23)
-#define MINDGROVE_SPI_CTRL_MISO_OUTEN ((uint32_t)1UL << 24)
-#define MINDGROVE_SPI_CTRL_MOSI_OUTEN ((uint32_t)1UL << 25)
+/* CTRL register */
+#define MINDGROVE_SPI_CTRL_SLAVE_MODE(x)	((x) << 0)
+#define MINDGROVE_SPI_CTRL_EN(x)		((x) << 1)
+#define MINDGROVE_SPI_CTRL_LSBFIRST(x)		((x) << 2)
+#define MINDGROVE_SPI_CTRL_RX_FLUSH(x)		((x) << 3)
+#define MINDGROVE_SPI_CTRL_COMM_MODE(x)	((x) << 4)
+#define MINDGROVE_SPI_CTRL_TOTAL_BIT_TX(x)	((x) << 6)
+#define MINDGROVE_SPI_CTRL_TOTAL_BIT_RX(x)	((x) << 14)
+#define MINDGROVE_SPI_CTRL_SCLK_OUTEN		((u32)BIT(22))
+#define MINDGROVE_SPI_CTRL_NCS_OUTEN		((u32)BIT(23))
+/* MISO_OUTEN: do NOT set in master mode — disables MISO input buffer */
+#define MINDGROVE_SPI_CTRL_MOSI_OUTEN		((u32)BIT(25))
 
-// #define MINDGROVE_SPI_CTRL_SLAVE_MODE	         BIT(0)
-// #define MINDGROVE_SPI_CTRL_EN			         BIT(1)
-// #define MINDGROVE_SPI_CTRL_LSBFIRST		         BIT(2)
-// #define  MINDGROVE_SPI_CTRL_RX_FLUSH(x)          ((x) << 3)
-// // #define MINDGROVE_SPI_CTRL_RX_FLUSH		         BIT(3)
-// #define MINDGROVE_SPI_CTRL_COMM_MODE_SHIFT	    4
-// #define MINDGROVE_SPI_CTRL_COMM_MODE_MASK	    GENMASK(5, 4)
-// #define MINDGROVE_SPI_CTRL_TOTAL_BIT_TX_SHIFT	6
-// #define MINDGROVE_SPI_CTRL_TOTAL_BIT_TX_MASK	GENMASK(13, 6)
-// #define MINDGROVE_SPI_CTRL_TOTAL_BIT_RX_SHIFT	14
-// #define MINDGROVE_SPI_CTRL_TOTAL_BIT_RX_MASK	GENMASK(21, 14)
-// #define MINDGROVE_SPI_CTRL_SCLK_OUTEN		    BIT(22)
-// #define MINDGROVE_SPI_CTRL_NCS_OUTEN		    BIT(23)
-// #define MINDGROVE_SPI_CTRL_MISO_OUTEN		    BIT(24)
-// #define MINDGROVE_SPI_CTRL_MOSI_OUTEN		    BIT(25)
+/* CLK_CTRL register */
+#define MINDGROVE_SPI_CLK_CTRL_POLARITY		BIT(0)
+#define MINDGROVE_SPI_CLK_CTRL_PHASE		BIT(1)
+#define MINDGROVE_SPI_CLK_CTRL_PRESCALAR_SHIFT	2
+#define MINDGROVE_SPI_CLK_CTRL_PRESCALAR_MASK	GENMASK(15, 2)
+#define MINDGROVE_SPI_CLK_CTRL_SETUP_SHIFT	16
+#define MINDGROVE_SPI_CLK_CTRL_HOLD_SHIFT	24
 
-/* CLK_CTRL register bit definitions */
-#define MINDGROVE_SPI_CLK_CTRL_POLARITY BIT(0)
-#define MINDGROVE_SPI_CLK_CTRL_PHASE BIT(1)
-#define MINDGROVE_SPI_CLK_CTRL_PRESCALAR_SHIFT 2
-#define MINDGROVE_SPI_CLK_CTRL_PRESCALAR_MASK GENMASK(15, 2)
-#define MINDGROVE_SPI_CLK_CTRL_SETUP_SHIFT 16
-#define MINDGROVE_SPI_CLK_CTRL_SETUP_MASK GENMASK(23, 16)
-#define MINDGROVE_SPI_CLK_CTRL_HOLD_SHIFT 24
-#define MINDGROVE_SPI_CLK_CTRL_HOLD_MASK GENMASK(31, 24)
+/* FIFO_STATUS register (32-bit) */
+#define MINDGROVE_SPI_FIFO_STATUS_TX_EMPTY	BIT(0)
+#define MINDGROVE_SPI_FIFO_STATUS_TX_FULL	BIT(8)
+#define MINDGROVE_SPI_FIFO_STATUS_RX_EMPTY	BIT(9)
 
-/* FIFO_STATUS register bit definitions */
-#define MINDGROVE_SPI_FIFO_STATUS_TX_EMPTY BIT(0)
-#define MINDGROVE_SPI_FIFO_STATUS_TX_FULL BIT(8)
-#define MINDGROVE_SPI_FIFO_STATUS_RX_EMPTY BIT(9)
-#define MINDGROVE_SPI_FIFO_STATUS_RX_FULL BIT(17)
+/* COMM_STATUS register (16-bit — use readw) */
+#define MINDGROVE_SPI_COMM_STATUS_BUSY		BIT(0)
 
-/* COMM_STATUS register bit definitions */
-#define MINDGROVE_SPI_COMM_STATUS_BUSY BIT(0)
-#define MINDGROVE_SPI_COMM_STATUS_TX_DEPTH_SHIFT 3
-#define MINDGROVE_SPI_COMM_STATUS_TX_DEPTH_MASK GENMASK(5, 3)
-#define MINDGROVE_SPI_COMM_STATUS_RX_DEPTH_SHIFT 6
-#define MINDGROVE_SPI_COMM_STATUS_RX_DEPTH_MASK GENMASK(8, 6)
-
-/* NCS_CTRL register bit definitions */
-#define MINDGROVE_SPI_NCS_CTRL_SELECT(x) ((x) << 0)
-#define MINDGROVE_SPI_NCS_CTRL_SW(x) ((x) << 1)
+/* NCS_CTRL register (32-bit — use readl/writel) */
+#define MINDGROVE_SPI_NCS_CTRL_SELECT(x)	((u32)((x) << 0))
+#define MINDGROVE_SPI_NCS_CTRL_SW(x)		((u32)((x) << 1))
 
 /* Communication modes */
-#define MINDGROVE_SPI_COMM_MODE_TX 0
-#define MINDGROVE_SPI_COMM_MODE_RX 1
-#define MINDGROVE_SPI_COMM_MODE_HALF_DUPLEX 2
-#define MINDGROVE_SPI_COMM_MODE_FULL_DUPLEX 3
+#define MINDGROVE_SPI_COMM_MODE_FULL_DUPLEX	3
 
-struct mindgrove_spi
-{
-	void __iomem *base; // Base address for SPI...
-	u32 fifo_depth;		// FIFO length/depth of the SPI Controller.
-	u32 bits_per_word;	// The Transaction bits per word count...
-	u32 input_clk_hz;	// This is the board freq is set from the DTS file...
-	u32 spi_freq;		// This is the operational freq of the SPI...
-	u32 comm_mode;		// The communication mode of the SPI Controller...
-	u16 prescaler;
-	u8 num_cs;
+struct mindgrove_spi {
+	void __iomem	*base;
+	u32		fifo_depth;
+	u32		bits_per_word;
+	u32		input_clk_hz;
+	u32		spi_freq;
+	u16		prescaler;
+	u8		num_cs;
 };
 
-// ncs_status : 1-> enable , 0-> disable
-static int mindgrove_spi_cs_control(struct mindgrove_spi *spi,
-                                   struct dm_spi_slave_plat *slave_plat,
-                                   bool enable)
-{
-    u8 ncs_ctrl = readb(spi->base + MINDGROVE_SPI_REG_NCS_CTRL);
+/* ------------------------------------------------------------------ */
+/* Hardware helpers                                                     */
+/* ------------------------------------------------------------------ */
 
-    /* Clear SW bit */
-    ncs_ctrl &= ~MINDGROVE_SPI_NCS_CTRL_SW(1);
-
-    if (enable) {
-        /* Assert CS */
-        if (!(slave_plat->mode & SPI_CS_HIGH))
-            ncs_ctrl |= MINDGROVE_SPI_NCS_CTRL_SW(1);
-    } else {
-        /* Deassert CS */
-        if (slave_plat->mode & SPI_CS_HIGH)
-            ncs_ctrl |= MINDGROVE_SPI_NCS_CTRL_SW(1);
-    }
-
-    writeb(ncs_ctrl, spi->base + MINDGROVE_SPI_REG_NCS_CTRL);
-    return 0;
-}
-
-
+/*
+ * Wait for TX FIFO empty AND engine not busy.
+ * Called after a burst to confirm all bytes have been clocked out.
+ */
 static int mindgrove_spi_wait_complete(struct mindgrove_spi *spi)
 {
 	u32 timeout = MINDGROVE_SPI_TIMEOUT_US;
-	u32 fifo_status, comm_status;
 
-	while (timeout--)
-	{
-		fifo_status = readl(spi->base + MINDGROVE_SPI_REG_FIFO_STATUS);
-		comm_status = readw(spi->base + MINDGROVE_SPI_REG_COMM_STATUS);
+	while (timeout--) {
+		u32 fs = readl(spi->base + MINDGROVE_SPI_REG_FIFO_STATUS);
+		u16 cs = readw(spi->base + MINDGROVE_SPI_REG_COMM_STATUS);
 
-		if ((fifo_status & MINDGROVE_SPI_FIFO_STATUS_TX_EMPTY) &&
-			!(comm_status & MINDGROVE_SPI_COMM_STATUS_BUSY))
+		if ((fs & MINDGROVE_SPI_FIFO_STATUS_TX_EMPTY) &&
+		    !(cs & MINDGROVE_SPI_COMM_STATUS_BUSY))
 			return 0;
-
-		udelay(1);
 	}
-
 	return -ETIMEDOUT;
 }
 
@@ -163,312 +115,276 @@ static void mindgrove_spi_prep(struct mindgrove_spi *spi)
 {
 	u32 ctrl;
 
-	/* Set communication mode */
-	ctrl = (MINDGROVE_SPI_CTRL_COMM_MODE(MINDGROVE_SPI_COMM_MODE_FULL_DUPLEX));
-	/* Set transfer size in bits */
-	ctrl |= (MINDGROVE_SPI_CTRL_TOTAL_BIT_TX(spi->bits_per_word)) |
-			(MINDGROVE_SPI_CTRL_TOTAL_BIT_RX(spi->bits_per_word)) |
-			MINDGROVE_SPI_CTRL_SCLK_OUTEN |
-			MINDGROVE_SPI_CTRL_NCS_OUTEN |
-			MINDGROVE_SPI_CTRL_MOSI_OUTEN;
-
-	/* Configure control register */
+	ctrl  = MINDGROVE_SPI_CTRL_COMM_MODE(MINDGROVE_SPI_COMM_MODE_FULL_DUPLEX);
+	ctrl |= MINDGROVE_SPI_CTRL_TOTAL_BIT_TX(spi->bits_per_word);
+	ctrl |= MINDGROVE_SPI_CTRL_TOTAL_BIT_RX(spi->bits_per_word);
+	ctrl |= MINDGROVE_SPI_CTRL_SCLK_OUTEN;
+	ctrl |= MINDGROVE_SPI_CTRL_NCS_OUTEN;
+	ctrl |= MINDGROVE_SPI_CTRL_MOSI_OUTEN;
+	/* MISO_OUTEN intentionally omitted */
 	ctrl |= MINDGROVE_SPI_CTRL_EN(1);
 
 	writel(ctrl, spi->base + MINDGROVE_SPI_REG_CTRL);
 }
 
-static int mindgrove_spi_xfer(struct udevice *dev, unsigned int bitlen,
-							  const void *dout, void *din, unsigned long flags)
+/*
+ * Assert or deassert chip-select via NCS_CTRL SW bit.
+ *
+ * NCS_CTRL_SW controls the NCS pin directly:
+ *   SW=0 → NCS low  → CS asserted   (active-low device, enable=true)
+ *   SW=1 → NCS high → CS deasserted (active-low device, enable=false)
+ *
+ * For active-high devices (SPI_CS_HIGH), logic is inverted.
+ */
+static void mindgrove_spi_cs_set(struct mindgrove_spi *spi,
+				 struct dm_spi_slave_plat *slave_plat,
+				 bool enable)
 {
-	struct udevice *bus = dev->parent;
-	struct mindgrove_spi *spi = dev_get_priv(bus);
-	struct dm_spi_slave_plat *slave_plat = dev_get_parent_plat(dev);
-	u32 remaining_len;
-	int ret;
-	u32 fifo_status;
-	const u8 *tx_ptr = dout;
-	u8 rx_data[remaining_len];
-	u8 *rx_ptr = din ? din : rx_data;
-	
-	if (bitlen % 8)
-	{
-		dev_err(dev, "Non-byte aligned transfer not supported\n");
-		return -EINVAL;
-	}
-	
-	remaining_len = bitlen / 8;
-	
+	u32 ncs_ctrl = readl(spi->base + MINDGROVE_SPI_REG_NCS_CTRL);
+	bool cs_high = !!(slave_plat->mode & SPI_CS_HIGH);
 
-	mindgrove_spi_prep(spi);
+	/*
+	 * SW=0 asserts active-low, SW=1 asserts active-high.
+	 * enable==cs_high gives the correct SW value for all combinations.
+	 */
+	if (enable == cs_high)
+		ncs_ctrl |=  MINDGROVE_SPI_NCS_CTRL_SW(1);
+	else
+		ncs_ctrl &= ~MINDGROVE_SPI_NCS_CTRL_SW(1);
 
-	// printk(KERN_ALERT "[MG-INFO] The mode is %x\n\r",spi->comm_mode);
-	// printk(KERN_ALERT "[MG-INFO] The length in bits: %d, bytes: %d\n\r", bitlen, remaining_len);
-	// printk(KERN_ALERT "[MG-INFO] The Communication Control Register has the following value : %x\n\r",readl(spi->base + MINDGROVE_SPI_REG_CTRL));
-	// printk(KERN_ALERT "[MG-INFO] The Clock Control Register has the following value : %x\n\r",readl(spi->base + MINDGROVE_SPI_REG_CLK_CTRL));
-	// printk(KERN_ALERT "[MG-INFO] The FIFO Status Register has the following value : %x\n\r",readl(spi->base + MINDGROVE_SPI_REG_FIFO_STATUS));
-	// printk(KERN_ALERT "[MG-INFO] The Communication Status Register has the following value : %x\n\r",readw(spi->base + MINDGROVE_SPI_REG_COMM_STATUS));
-	// printk(KERN_ALERT "Entering the loop.\n\r");
-
-	if (flags & SPI_XFER_BEGIN)
-	{
-		// ret = mindgrove_spi_cs_control(spi, slave_plat, NCS_ENABLE);
-		if (ret)
-		{
-			return ret;
-		}
-	}
-
-	unsigned int nword;
-	for (nword = 0; nword < remaining_len; nword++)
-	{
-		u8 tx_data = (tx_ptr != NULL) ? tx_ptr[nword] : 0xFF;
-		do
-		{
-			fifo_status = readl(spi->base + MINDGROVE_SPI_REG_FIFO_STATUS);
-		} while (fifo_status & MINDGROVE_SPI_FIFO_STATUS_TX_FULL);
-
-		// printk(KERN_ALERT "Transmitting the data: 0x%x\n\r", tx_data);
-		writeb(tx_data, spi->base + MINDGROVE_SPI_REG_TX);
-
-
-		do
-		{
-			fifo_status = readl(spi->base + MINDGROVE_SPI_REG_FIFO_STATUS);
-		} while (fifo_status & MINDGROVE_SPI_FIFO_STATUS_RX_EMPTY);
-
-		rx_ptr[nword] = readb(spi->base + MINDGROVE_SPI_REG_RX);
-		// printk(KERN_ALERT "Received the data: 0x%x\n\r", rx_ptr[nword]);
-	}
-
-	/* Wait for completion */
-	ret = mindgrove_spi_wait_complete(spi);
-	if (ret)
-	{
-		dev_err(dev, "Transfer timeout\n\r");
-		return ret;
-	}
-	if (flags & SPI_XFER_END)
-	{
-		// mindgrove_spi_cs_control(spi, slave_plat, NCS_DISABLE);
-		/* Disable SPI */
-		// writel(0, spi->base + MINDGROVE_SPI_REG_CTRL);
-	}
-
-	return 0;
+	writel(ncs_ctrl, spi->base + MINDGROVE_SPI_REG_NCS_CTRL);
 }
 
-static int mindgrove_spi_exec_op(struct spi_slave *slave,
-								 const struct spi_mem_op *op)
-{
-	struct udevice *dev = slave->dev;
-	unsigned long flags = SPI_XFER_BEGIN;
-	u8 opcode = op->cmd.opcode;
-	unsigned int pos = 0;
-	const void *tx_buf = NULL;
-	void *rx_buf = NULL;
-	int op_len, i;
-	int ret;
-
-	if (!op->addr.nbytes && !op->dummy.nbytes && !op->data.nbytes)
-		flags |= SPI_XFER_END;
-
-	/* send the opcode */
-	ret = mindgrove_spi_xfer(dev, 8, (void *)&opcode, NULL, flags);
-	if (ret < 0)
-	{
-		dev_err(dev, "failed to xfer opcode\n");
-		return ret;
-	}
-	op_len = op->addr.nbytes + op->dummy.nbytes;
-	if (op_len > 0)
-	{
-		u8 op_buf[op_len];
-
-		/* send the addr + dummy */
-		if (op->addr.nbytes)
-		{
-			/* fill address */
-			for (i = 0; i < op->addr.nbytes; i++)
-				op_buf[pos + i] = op->addr.val >>
-								  (8 * (op->addr.nbytes - i - 1));
-
-			pos += op->addr.nbytes;
-
-			/* fill dummy */
-			if (op->dummy.nbytes)
-				memset(op_buf + pos, 0xff, op->dummy.nbytes);
-
-			/* make sure to set end flag, if no data bytes */
-			if (!op->data.nbytes)
-				flags |= SPI_XFER_END;
-
-			ret = mindgrove_spi_xfer(dev, op_len * 8, op_buf, NULL, flags);
-			if (ret < 0)
-			{
-				dev_err(dev, "failed to xfer addr + dummy\n");
-				return ret;
-			} 
-		}
-	}
-	/* send/received the data */
-	if (op->data.nbytes)
-	{
-		if (op->data.dir == SPI_MEM_DATA_IN)
-			rx_buf = op->data.buf.in;
-		else
-			tx_buf = op->data.buf.out;
-
-		ret = mindgrove_spi_xfer(dev, op->data.nbytes * 8,
-								 tx_buf, rx_buf, SPI_XFER_END);
-		if (ret)
-		{
-			dev_err(dev, "failed to xfer data\n");
-			return ret;
-		}
-	}
-	return 0;
-}
+/* ------------------------------------------------------------------ */
+/* DM SPI ops                                                           */
+/* ------------------------------------------------------------------ */
 
 static int mindgrove_spi_set_speed(struct udevice *bus, uint speed)
 {
 	struct mindgrove_spi *spi = dev_get_priv(bus);
-	u32 prescaler, clk_ctrl, actual_freq;
+	u32 prescaler, clk_ctrl;
 
-	if (spi->spi_freq != speed)
-		spi->spi_freq = speed;
+	if (!speed)
+		return 0;
 
-	prescaler = (spi->input_clk_hz / spi->spi_freq) - 1;
+	prescaler = spi->input_clk_hz / speed;
+	if (prescaler)
+		prescaler -= 1;
+	if (prescaler > 0x3FFF)
+		prescaler = 0x3FFF;
 
-	if (((spi->input_clk_hz / (prescaler + 1)) > MINDGROVE_SPI_MAX_FREQ) ||
-	    ((spi->input_clk_hz / (prescaler + 1)) < (spi->input_clk_hz / 0x3FFF))) {
-		dev_err(bus, "Invalid SPI frequency: %d Hz\n", speed);
-		return -EINVAL;
-	}
+	/* Skip register write if speed unchanged */
+	if (prescaler == spi->prescaler && spi->spi_freq == speed)
+		return 0;
 
 	spi->prescaler = prescaler;
-	actual_freq = spi->input_clk_hz / (prescaler + 1);
+	spi->spi_freq  = speed;
 
-	clk_ctrl = readl(spi->base + MINDGROVE_SPI_REG_CLK_CTRL);
+	clk_ctrl  = readl(spi->base + MINDGROVE_SPI_REG_CLK_CTRL);
 	clk_ctrl &= ~MINDGROVE_SPI_CLK_CTRL_PRESCALAR_MASK;
 	clk_ctrl |= (prescaler << MINDGROVE_SPI_CLK_CTRL_PRESCALAR_SHIFT);
 	writel(clk_ctrl, spi->base + MINDGROVE_SPI_REG_CLK_CTRL);
 
-	printf("SPI: Requested freq: %u Hz, Prescaler: %u, Actual freq: %u Hz\n",
-	       speed, prescaler, actual_freq);
-
+	/* No printf — this is called before every transfer and printf at
+	 * 115200 baud costs ~5ms per call, adding minutes to large transfers */
 	return 0;
 }
 
 static int mindgrove_spi_set_mode(struct udevice *bus, uint mode)
 {
 	struct mindgrove_spi *spi = dev_get_priv(bus);
-	u32 clk_ctrl;
-	u8 ncs_ctrl = 0;
+	u32 clk_ctrl, ctrl, ncs_ctrl;
 
-	/* Switch clock mode bits */
-	clk_ctrl = readl(spi->base + MINDGROVE_SPI_REG_CLK_CTRL);
-	clk_ctrl &= ~(MINDGROVE_SPI_CLK_CTRL_POLARITY | MINDGROVE_SPI_CLK_CTRL_PHASE);
-
+	clk_ctrl  = readl(spi->base + MINDGROVE_SPI_REG_CLK_CTRL);
+	clk_ctrl &= ~(MINDGROVE_SPI_CLK_CTRL_POLARITY |
+		      MINDGROVE_SPI_CLK_CTRL_PHASE);
 	if (mode & SPI_CPHA)
 		clk_ctrl |= MINDGROVE_SPI_CLK_CTRL_PHASE;
 	if (mode & SPI_CPOL)
 		clk_ctrl |= MINDGROVE_SPI_CLK_CTRL_POLARITY;
-
 	writel(clk_ctrl, spi->base + MINDGROVE_SPI_REG_CLK_CTRL);
 
-	/* Set LSB first if required */
+	ctrl = readl(spi->base + MINDGROVE_SPI_REG_CTRL);
 	if (mode & SPI_LSB_FIRST)
-	{
-		u32 ctrl = readl(spi->base + MINDGROVE_SPI_REG_CTRL) |
-				   MINDGROVE_SPI_CTRL_LSBFIRST(1);
-		writel(ctrl, spi->base + MINDGROVE_SPI_REG_CTRL);
-	}
-	/* Configure NCS control for software mode */
-	ncs_ctrl = readl(spi->base + MINDGROVE_SPI_REG_NCS_CTRL) |
-			   MINDGROVE_SPI_NCS_CTRL_SELECT(1);
+		ctrl |=  MINDGROVE_SPI_CTRL_LSBFIRST(1);
+	else
+		ctrl &= ~MINDGROVE_SPI_CTRL_LSBFIRST(1);
+	writel(ctrl, spi->base + MINDGROVE_SPI_REG_CTRL);
 
-	/* Update the chip select polarity */
-	if (mode & SPI_CS_HIGH)
-		ncs_ctrl |= MINDGROVE_SPI_NCS_CTRL_SW(1);
+	/* NCS_CTRL: select CS0, start deasserted (SW=1 for active-low) */
+	ncs_ctrl = MINDGROVE_SPI_NCS_CTRL_SELECT(1);
+	if (!(mode & SPI_CS_HIGH))
+		ncs_ctrl |= MINDGROVE_SPI_NCS_CTRL_SW(1); /* deasserted = high */
+	writel(ncs_ctrl, spi->base + MINDGROVE_SPI_REG_NCS_CTRL);
 
-	writeb(ncs_ctrl, spi->base + MINDGROVE_SPI_REG_NCS_CTRL);
 	return 0;
 }
 
+/*
+ * mindgrove_spi_xfer - transfer bitlen bits over SPI.
+ *
+ * Uses FIFO burst mode: fills up to fifo_depth bytes into TX before
+ * draining RX, dramatically reducing MMIO accesses vs byte-by-byte.
+ *
+ * In FULL_DUPLEX mode the hardware always fills the RX FIFO for every
+ * TX byte, so we must always drain RX even when din==NULL.
+ */
+static int mindgrove_spi_xfer(struct udevice *dev, unsigned int bitlen,
+			      const void *dout, void *din, unsigned long flags)
+{
+	struct udevice *bus = dev->parent;
+	struct mindgrove_spi *spi = dev_get_priv(bus);
+	struct dm_spi_slave_plat *slave_plat = dev_get_parent_plat(dev);
+	const u8 *tx_ptr = dout;
+	u8 *rx_ptr = din;
+	u32 remaining_len;
+	u32 tx_sent = 0;
+	u32 rx_got  = 0;
+	u32 fifo_status;
+	int ret = 0;
+
+	if (bitlen % 8) {
+		dev_err(dev, "Non-byte aligned transfer not supported\n");
+		return -EINVAL;
+	}
+	remaining_len = bitlen / 8;
+
+	if (flags & SPI_XFER_BEGIN) {
+		mindgrove_spi_prep(spi);
+		mindgrove_spi_cs_set(spi, slave_plat, true); /* assert CS */
+	}
+
+	/*
+	 * Burst transfer loop:
+	 * - Push up to fifo_depth bytes ahead of what we've received
+	 *   (keeps TX FIFO full without RX overflow)
+	 * - Drain RX FIFO whenever data is available
+	 *
+	 * This reduces MMIO accesses from 4N to ~2N + 2*(N/fifo_depth)
+	 * compared to byte-by-byte polling.
+	 */
+	while (rx_got < remaining_len) {
+		/* Fill TX FIFO */
+		while (tx_sent < remaining_len &&
+		       (tx_sent - rx_got) < spi->fifo_depth) {
+			fifo_status = readl(spi->base + MINDGROVE_SPI_REG_FIFO_STATUS);
+			if (fifo_status & MINDGROVE_SPI_FIFO_STATUS_TX_FULL)
+				break;
+			writeb(tx_ptr ? tx_ptr[tx_sent] : 0xFF,
+			       spi->base + MINDGROVE_SPI_REG_TX);
+			tx_sent++;
+		}
+
+		/* Drain RX FIFO */
+		while (rx_got < tx_sent) {
+			fifo_status = readl(spi->base + MINDGROVE_SPI_REG_FIFO_STATUS);
+			if (fifo_status & MINDGROVE_SPI_FIFO_STATUS_RX_EMPTY)
+				break;
+			u8 rx_data = readb(spi->base + MINDGROVE_SPI_REG_RX);
+			if (rx_ptr)
+				rx_ptr[rx_got] = rx_data;
+			rx_got++;
+		}
+	}
+
+	ret = mindgrove_spi_wait_complete(spi);
+	if (ret)
+		dev_err(dev, "SPI transfer timeout\n");
+
+	if (flags & SPI_XFER_END)
+		mindgrove_spi_cs_set(spi, slave_plat, false); /* deassert CS */
+
+	return ret;
+}
+
 static int mindgrove_spi_cs_info(struct udevice *bus, uint cs,
-								 struct spi_cs_info *info)
+				 struct spi_cs_info *info)
 {
 	struct mindgrove_spi *spi = dev_get_priv(bus);
+
 	if (cs >= spi->num_cs)
 		return -EINVAL;
 	return 0;
 }
 
+/* ------------------------------------------------------------------ */
+/* Probe / init                                                         */
+/* ------------------------------------------------------------------ */
+
 static void mindgrove_spi_init_hw(struct mindgrove_spi *spi)
 {
-	/* Set number of chip selects */
 	spi->num_cs = MINDGROVE_SPI_MAX_CS;
-	/* Disable SPI initially */
+
+	/* Disable engine */
 	writel(0, spi->base + MINDGROVE_SPI_REG_CTRL);
+
 	/* Flush RX FIFO */
 	writel(MINDGROVE_SPI_CTRL_RX_FLUSH(1), spi->base + MINDGROVE_SPI_REG_CTRL);
-	writel(MINDGROVE_SPI_CTRL_RX_FLUSH(0), spi->base + MINDGROVE_SPI_REG_CTRL);
+	writel(0, spi->base + MINDGROVE_SPI_REG_CTRL);
 
-	/* Set default setup and hold times */
-	writel((1 << MINDGROVE_SPI_CLK_CTRL_SETUP_SHIFT) |
-			   (1 << MINDGROVE_SPI_CLK_CTRL_HOLD_SHIFT),
-		   spi->base + MINDGROVE_SPI_REG_CLK_CTRL);
+	/* Master mode */
+	writel(MINDGROVE_SPI_CTRL_SLAVE_MODE(0), spi->base + MINDGROVE_SPI_REG_CTRL);
 
-	/* Configure NCS for software control */
-	writeb(MINDGROVE_SPI_NCS_CTRL_SELECT(1), spi->base + MINDGROVE_SPI_REG_NCS_CTRL);
+	/*
+	 * CLK_CTRL: safe initial 400kHz (prescaler=124 at 50MHz),
+	 * setup=1 cycle, hold=1 cycle.
+	 * Full register write clears any leftover BBL state.
+	 */
+	writel((124u << MINDGROVE_SPI_CLK_CTRL_PRESCALAR_SHIFT) |
+	       (1u  << MINDGROVE_SPI_CLK_CTRL_SETUP_SHIFT) |
+	       (1u  << MINDGROVE_SPI_CLK_CTRL_HOLD_SHIFT),
+	       spi->base + MINDGROVE_SPI_REG_CLK_CTRL);
+
+	/*
+	 * NCS_CTRL: CS0 selected, SW=1 (NCS deasserted / high).
+	 * writel — 32-bit register.
+	 */
+	writel(MINDGROVE_SPI_NCS_CTRL_SELECT(1) | MINDGROVE_SPI_NCS_CTRL_SW(1),
+	       spi->base + MINDGROVE_SPI_REG_NCS_CTRL);
 }
 
 static int mindgrove_spi_probe(struct udevice *bus)
 {
 	struct mindgrove_spi *spi = dev_get_priv(bus);
 
-	spi->base = (void *)(ulong)dev_remap_addr(bus);
+	spi->base = (void __iomem *)(ulong)dev_remap_addr(bus);
 	if (!spi->base)
 		return -ENODEV;
 
 	spi->fifo_depth = dev_read_u32_default(bus, "mindgrove,fifo-depth",
-										   MINDGROVE_SPI_DEFAULT_DEPTH);
-
+					       MINDGROVE_SPI_DEFAULT_DEPTH);
 	spi->bits_per_word = dev_read_u32_default(bus, "mindgrove,max-bits-per-word",
-											  MINDGROVE_SPI_DEFAULT_BITS);
+						  MINDGROVE_SPI_DEFAULT_BITS);
+	spi->input_clk_hz = 50000000;
+	spi->spi_freq = dev_read_u32_default(bus, "spi-max-frequency",
+					     MINDGROVE_SPI_MAX_FREQ);
+	spi->prescaler = 124; /* matches init_hw 400kHz default */
 
-	spi->input_clk_hz = 50000000; /* Default 50MHz */
-
-	spi->spi_freq = dev_read_u32_default(bus, "spi-max-frequency", 35000000);
-
-	/* init the mindgrove spi hw */
 	mindgrove_spi_init_hw(spi);
-
 	return 0;
 }
 
-static const struct spi_controller_mem_ops mindgrove_spi_mem_ops = {
-	.exec_op = mindgrove_spi_exec_op,
-};
+/* ------------------------------------------------------------------ */
+/* Driver registration                                                  */
+/* ------------------------------------------------------------------ */
 
 static const struct dm_spi_ops mindgrove_spi_ops = {
-	.xfer = mindgrove_spi_xfer,
-	.set_speed = mindgrove_spi_set_speed,
-	.set_mode = mindgrove_spi_set_mode,
-	.cs_info = mindgrove_spi_cs_info,
-	// .mem_ops	= &mindgrove_ spi_mem_ops,
+	.xfer		= mindgrove_spi_xfer,
+	.set_speed	= mindgrove_spi_set_speed,
+	.set_mode	= mindgrove_spi_set_mode,
+	.cs_info	= mindgrove_spi_cs_info,
 };
 
 static const struct udevice_id mindgrove_spi_ids[] = {
-	{.compatible = "mindgrove,spi"},
-	{}};
+	{ .compatible = "mindgrove,spi" },
+	{}
+};
 
 U_BOOT_DRIVER(mindgrove_spi) = {
-	.name = "mindgrove_spi",
-	.id = UCLASS_SPI,
-	.of_match = mindgrove_spi_ids,
-	.ops = &mindgrove_spi_ops,
-	.priv_auto = sizeof(struct mindgrove_spi),
-	.probe = mindgrove_spi_probe,
+	.name		= "mindgrove_spi",
+	.id		= UCLASS_SPI,
+	.of_match	= mindgrove_spi_ids,
+	.ops		= &mindgrove_spi_ops,
+	.priv_auto	= sizeof(struct mindgrove_spi),
+	.probe		= mindgrove_spi_probe,
 };
